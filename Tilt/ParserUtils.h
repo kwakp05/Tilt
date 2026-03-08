@@ -183,9 +183,10 @@ struct any
 	using CombinedParsedType = combine_variants_t<get_variant_return_t<Parsers>...>;
     using ReturnType = std::expected<CombinedParsedType, ParseError>;
 
-	std::expected<CombinedParsedType, ParseError> operator()(std::string_view input) const
+	ReturnType operator()(std::string_view input) const
 	{
 		std::optional<CombinedParsedType> result{};
+
 		auto apply_parser = [&result, input]<Parser P>()
 		{
 			auto output = lift_parser_t<P>{}(input);
