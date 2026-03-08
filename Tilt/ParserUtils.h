@@ -1,5 +1,8 @@
 #pragma once
 
+#include <type_traits>
+
+#include "VariantUtils.h"
 
 using ParseError = std::string;
 
@@ -15,7 +18,7 @@ consteval bool is_parsed_variant()
     if constexpr (I >= std::variant_size_v<T>)
         return true;
     else
-        return Parsed<std::variant_alternative_t<I, T>>&& is_parsed_variant<T, I + 1>();
+        return Parsed<std::variant_alternative_t<I, T>> && is_parsed_variant<T, I + 1>();
 }
 
 template <typename T>
@@ -25,6 +28,7 @@ concept SingleParseResult = std::same_as<T, std::expected<typename T::value_type
 
 template <typename T>
 concept MultiParseResult = std::same_as<T, std::expected<typename T::value_type, typename T::error_type>>
+    && is_variant_v<typename T::value_type>
     && is_parsed_variant<typename T::value_type>()
     && std::same_as<typename T::error_type, ParseError>;
 
@@ -37,27 +41,57 @@ concept MultiParser = std::invocable<T, std::string_view>&& MultiParseResult<std
 template <typename T>
 concept Parser = SingleParser<T> || MultiParser<T>;
 
-auto lift_parser(Parser auto const& parser)
+template <Parser P>
+struct get_variant_return;
+
+template <SingleParser P>
+struct get_variant_return<P>
 {
-    if constexpr (MultiParser<parser>)
-        return parser;
-    else
-    {
-        return [parser](std::string_view input)
+	using type = std::variant<typename std::invoke_result_t<P, std::string_view>::value_type>;
+};
+
+template <MultiParser P>
+struct get_variant_return<P>
+{
+	using type = std::invoke_result_t<P, std::string_view>::value_type;
+};
+
+template<Parser P>
+using get_variant_return_t = get_variant_return<P>::type;
+
+namespace
+{
+template <SingleParser P>
+struct lift_parser_impl
+{
+	std::expected<get_variant_return_t<P>, ParseError> operator()(std::string_view input) const
+	{
+        return P{}(input).transform([](Parsed auto result)
         {
-                return parser(input).transform([](Parsed auto result)
-                {
-                        return std::variant<decltype(result)>{result};
-                });
-        };
-    }
+                return std::variant<decltype(result)>{result};
+        });
+	}
+    static_assert(MultiParser<lift_parser_impl<P>>, "HI");
+};
 }
 
-template<MultiParser P>
-struct get_variant_return
+template <Parser P>
+struct lift_parser {};
+
+template <MultiParser P>
+struct lift_parser<P>
 {
-    using type = std::invoke_result_t<P, std::string_view>;
+    using type = P;
 };
+
+template <SingleParser P>
+struct lift_parser<P>
+{
+    using type = lift_parser_impl<P>;
+};
+
+template <Parser P>
+using lift_parser_t = lift_parser<P>::type;
 
 constexpr bool is_whitespace(char c)
 {
@@ -126,4 +160,50 @@ struct next_impl
 }
 
 template <class Func>
-constexpr auto next = next_impl<Func>{};
+inline constexpr auto next = next_impl<Func>{};
+
+namespace
+{
+template <class Func>
+struct immediate_impl
+{
+    auto operator()(Parsed auto val) const
+    {
+		return Func{}(val.remainder);
+    }
+};
+}
+
+template <class Func>
+inline constexpr auto immediate = immediate_impl<Func>{};
+
+template <Parser... Parsers>
+struct any
+{
+	using CombinedParsedType = combine_variants_t<get_variant_return_t<Parsers>...>;
+    using ReturnType = std::expected<CombinedParsedType, ParseError>;
+
+	std::expected<CombinedParsedType, ParseError> operator()(std::string_view input) const
+	{
+		std::optional<CombinedParsedType> result{};
+		auto apply_parser = [&result, input]<Parser P>()
+		{
+			auto output = lift_parser_t<P>{}(input);
+            if (output.has_value())
+            {
+                std::visit([&result](auto&& res)
+                {
+                        result = CombinedParsedType{res};
+                }, *output);
+            }
+			return output.has_value();
+		};
+
+		(... || apply_parser.template operator()<Parsers>());
+
+        return result
+            .transform([](CombinedParsedType x) {return ReturnType{x}; })
+            .value_or(std::unexpected("parse any failed"));
+	}
+};
+

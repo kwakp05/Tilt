@@ -15,30 +15,8 @@
 #include "utf8.h"
 
 #include "ParserUtils.h"
+#include "VariantUtils.h"
 
-//template<SingleParser P>
-//struct get_variant_return
-//{
-//    using type = 
-//};
-
-template<Parser p, Parser... args>
-struct get_return
-{
-
-};
-
-auto do_any(Parser auto parser, Parser auto... parsers)
-{
-    if constexpr (sizeof...(parsers) == 0)
-    {
-        return lift_parser(parser);
-    }
-    else
-    {
-        return parser;
-    }
-}
 
 enum class Keyword
 {
@@ -321,23 +299,6 @@ std::expected<ParsedKeyword, ParseError> expect_keyword(ParsedKeyword val)
     return std::unexpected("wrong keyword");
 }
 
-namespace
-{
-template <class Func>
-struct immediate_impl
-{
-    auto operator()(Parsed auto val) const
-    {
-		using T = std::decay_t<decltype(val)>;
-		std::string_view remainder;
-		return Func{}(remainder);
-    }
-};
-}
-
-template <class Func>
-constexpr auto immediate = immediate_impl<Func>{};
-
 std::expected<ParsedDummy, ParseError> begin_parse(std::string_view input)
 {
     return ParsedDummy{ .remainder = input };
@@ -434,9 +395,22 @@ int main()
 {
     std::string input = "def hello : Nat := 12938\n";
     std::string input2 = "#check hello";
-    //std::string input = "def msodfij3 : Bool := false\n";
+    std::string input3 = "identifier check";
     auto x = parse_constant(input);
     auto y = parse_command(input2);
+    auto z = begin_parse(input3).and_then(immediate<any<parse_command_name, parse_identifier>>);
+    std::visit([](auto&& arg)
+    {
+        using T = std::decay_t<decltype(arg)>;
+        if constexpr (std::is_same_v<T, ParsedEvalCommand>)
+            std::cout << "EVAL\n";
+        else if constexpr (std::is_same_v<T, ParsedCheckCommand>)
+            std::cout << "CHECK\n";
+        else if constexpr (std::is_same_v<T, ParsedIdentifier>)
+            std::cout << "IDEN\n";
+        else
+            static_assert("unreachable");
+    }, z.value());
     if (x.has_value())
     {
         std::visit([](auto&& arg)
