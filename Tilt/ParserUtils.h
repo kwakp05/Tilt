@@ -143,14 +143,14 @@ namespace
 template <class Func>
 struct next_impl
 {
-    auto operator()(Parsed auto val) const
+    auto operator()(auto&& val) const
     {
 		using T = std::decay_t<decltype(val)>;
 		std::string_view remainder;
 		if constexpr (Parsed<T>)
 			remainder = consume_whitespace(val.remainder);
 		else
-			remainder = std::visit([](auto& x)
+			remainder = std::visit([](auto&& x)
 			{
 					return consume_whitespace(x.remainder);
 			}, val);

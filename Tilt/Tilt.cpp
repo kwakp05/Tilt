@@ -11,6 +11,7 @@
 #include <type_traits>
 #include <utility>
 #include <variant>
+#include <vector>
 
 #include "utf8.h"
 
@@ -125,170 +126,253 @@ struct ParsedKeyword
 struct ParsedExpression
 {
     std::string_view remainder;
+    std::vector<combine_variants_t<std::variant<ParsedIdentifier>, ParsedOperator>> tokens;
 };
+
+std::expected<ParsedDummy, ParseError> begin_parse(std::string_view input)
+{
+    return ParsedDummy{ .remainder = input };
+}
+
+template <class Func>
+auto effect(Func const& func)
+{
+    return [&func](auto x) {
+        if constexpr (std::is_void_v<std::invoke_result_t<Func, decltype(x)>>)
+        {
+            func(x);
+            return std::expected<decltype(x), ParseError>{x};
+        }
+        else
+        {
+            auto output = func(x);
+            return output;
+        }
+    };
+}
 
 struct parse_identifier
 {
-	std::expected<ParsedIdentifier, ParseError> operator()(std::string_view input) const
-	{
-		if (input.empty())
-			return std::unexpected("empty");
-		if (!is_identifier(input.front()))
-			return std::unexpected("bad char");
+    std::expected<ParsedIdentifier, ParseError> operator()(std::string_view input) const
+    {
+        if (input.empty())
+            return std::unexpected("empty");
+        if (!is_identifier(input.front()))
+            return std::unexpected("bad char");
 
-		auto it = std::find_if_not(input.begin(), input.end(), is_identifier);
-		size_t identifier_end = std::distance(input.begin(), it);
-		return ParsedIdentifier{
-			.identifier = input.substr(0, identifier_end),
-			.remainder = input.substr(identifier_end)
-		};
-	}
+        auto it = std::find_if_not(input.begin(), input.end(), is_identifier);
+        size_t identifier_end = std::distance(input.begin(), it);
+        return ParsedIdentifier{
+            .identifier = input.substr(0, identifier_end),
+            .remainder = input.substr(identifier_end)
+        };
+    }
 };
 
 struct parse_operator
 {
-	std::expected<ParsedOperator, ParseError> operator()(std::string_view input) const
-	{
-		auto it = std::find_if_not(input.begin(), input.end(), is_control);
-		size_t operator_end = std::distance(input.begin(), it);
-		std::string_view op = input.substr(0, operator_end);
-		if (op == "->")
-			return ParsedFunctionOperator{
-				.remainder = input.substr(operator_end)
-			};
-		return std::unexpected("Invalid operator: " + std::string{ op });
-	}
+    std::expected<ParsedOperator, ParseError> operator()(std::string_view input) const
+    {
+        auto it = std::find_if_not(input.begin(), input.end(), is_control);
+        size_t operator_end = std::distance(input.begin(), it);
+        std::string_view op = input.substr(0, operator_end);
+        if (op == "->")
+            return ParsedFunctionOperator{
+                .remainder = input.substr(operator_end)
+            };
+        return std::unexpected("Invalid operator: " + std::string{ op });
+    }
 };
 
 struct parse_command_name
 {
-	std::expected<std::variant<ParsedCheckCommand, ParsedEvalCommand>, ParseError> operator()(std::string_view input) const
-	{
-		return parse_identifier{}(input).and_then([](ParsedIdentifier x) -> std::expected<std::variant<ParsedCheckCommand, ParsedEvalCommand>, ParseError>
-		{
-				if (x.identifier == "check")
-					return ParsedCheckCommand{ .remainder = x.remainder };
-				else if (x.identifier == "eval")
-					return ParsedEvalCommand{ .remainder = x.remainder };
-				else
-					return std::unexpected("Invalid command: " + std::string(x.identifier));
-		});
-	}
+    std::expected<std::variant<ParsedCheckCommand, ParsedEvalCommand>, ParseError> operator()(std::string_view input) const
+    {
+        return parse_identifier{}(input).and_then([](ParsedIdentifier x) -> std::expected<std::variant<ParsedCheckCommand, ParsedEvalCommand>, ParseError>
+        {
+                if (x.identifier == "check")
+                    return ParsedCheckCommand{ .remainder = x.remainder };
+                else if (x.identifier == "eval")
+                    return ParsedEvalCommand{ .remainder = x.remainder };
+                else
+                    return std::unexpected("Invalid command: " + std::string(x.identifier));
+        });
+    }
 };
 
 struct parse_expression
 {
-	std::expected<ParsedExpression, ParseError> operator()(std::string_view input) const
-	{
-		struct test1 {};
-		struct test2 {};
-		std::variant<test1, test2> state{ test1{} };
-		while (true)
-		{
-			auto result = std::visit([input](auto x)
-			{
-					using T = std::decay_t<decltype(x)>;
-					if constexpr (std::is_same_v<T, test1>)
-					{
-						//return parse_identifier(input);
-						return 3;
-					}
-					else if constexpr (std::is_same_v<T, test2>)
-					{
-						//return parse_identifier(input)
-						//    .or_else([input]() {return parse_identifier(input); });
-						return 2;
-					}
-					else
-						static_assert(false, "should be unreachable");
-			}, state);
-			break;
+    std::expected<ParsedExpression, ParseError> operator()(std::string_view input) const
+    {
+        ParsedExpression result;
 
-		}
-		//parse_identifier(input).and_then(next(parse_operator));
+        /*
+        * Expression parsing starts in partial_state.
+        *
+        * partial_state = Incomplete parse, expect identifier
+        * full_state = Complete parse, expect identifier or operator
+        * error_state = Terminate with failure. Input does not form a valid expression
+        * done_state = Terminate with success. Input forms a valid expression
+        *
+        * partial_state + identifier => full_state
+        * partial_state + operator => error_state
+        * partial_state + * => error_state
+        *
+        * full_state + identifier => full_state
+        * full_state + operator => partial_state
+        * full_state + * => done_state
+        */
 
-		return std::unexpected("how do i do this");
-	}
+        struct partial_state {};
+        struct full_state {};
+        struct error_state {};
+        struct done_state {};
+        using StateType = std::variant<partial_state, full_state, error_state, done_state>;
+        StateType state{ partial_state{} };
+
+        while (!std::holds_alternative<error_state>(state) && !std::holds_alternative<done_state>(state))
+        {
+            state = std::visit([&input, &result](auto&& x) -> StateType
+            {
+                    using T = std::remove_cvref_t<decltype(x)>;
+                    if constexpr (std::is_same_v<T, partial_state>)
+                    {
+                        auto res = begin_parse(input)
+                            .and_then(next<parse_identifier>)
+                            .transform(effect([&input, &result](ParsedIdentifier x) -> StateType
+                            {
+                                    result.tokens.push_back(x);
+                                    input = result.remainder = x.remainder;
+                                    return full_state{};
+                            }));
+
+                        return res.value_or(error_state{});
+                    }
+                    else if constexpr (std::is_same_v<T, full_state>)
+                    {
+                        auto res = begin_parse(input)
+                            .and_then(next<any<parse_operator, parse_identifier>>)
+                            .transform(effect([&input, &result](auto&& parsed_variant) -> StateType
+                            {
+                                    return std::visit([&input, &result](Parsed auto&& parsed) -> StateType
+                                    {
+                                            result.tokens.push_back(parsed);
+                                            input = result.remainder = parsed.remainder;
+                                            if constexpr (std::is_same_v<std::remove_cvref_t<decltype(parsed)>, ParsedIdentifier>)
+                                                return full_state{};
+                                            else
+                                                return partial_state{};
+                                    }, parsed_variant);
+                            }));
+
+                        return res.value_or(done_state{});
+                    }
+                    else if constexpr (std::is_same_v<T, error_state>)
+                        return error_state{};
+                    else if constexpr (std::is_same_v<T, done_state>)
+                        return done_state{};
+                    else
+                        static_assert(false, "should be unreachable");
+            }, state);
+        }
+
+        return std::visit([&result](auto&& arg) -> std::expected<ParsedExpression, ParseError>
+        {
+                using T = std::remove_cvref_t<decltype(arg)>;
+                if constexpr (std::is_same_v<T, partial_state>)
+                    return std::unexpected("BUG: unexpected expression parsing failure. partial_state");
+                else if constexpr (std::is_same_v<T, full_state>)
+                    return std::unexpected("BUG: unexpected expression parsing failure. full_state");
+                else if constexpr (std::is_same_v<T, error_state>)
+                    return std::unexpected("bad expression");
+                else if constexpr (std::is_same_v<T, done_state>)
+                {
+                    return result;
+                }
+                else
+                    static_assert(false, "should be unreachable");
+        }, state);
+    }
 };
 
 struct parse_hash
 {
-	std::expected<ParsedHash, ParseError> operator()(std::string_view input) const
-	{
-		if (input.empty())
-			return std::unexpected("empty");
-		if (input.front() == '#')
-			return ParsedHash{ .remainder=input.substr(1) };
-		return std::unexpected("Expected hash");
-	}
+    std::expected<ParsedHash, ParseError> operator()(std::string_view input) const
+    {
+        if (input.empty())
+            return std::unexpected("empty");
+        if (input.front() == '#')
+            return ParsedHash{ .remainder=input.substr(1) };
+        return std::unexpected("Expected hash");
+    }
 };
 
 struct parse_colon
 {
-	std::expected<ParsedColon, ParseError> operator()(std::string_view input) const
-	{
-		if (input.empty())
-			return std::unexpected("empty");
-		if (input.front() == ':')
-			return ParsedColon{ .remainder=input.substr(1) };
-		return std::unexpected("Expected colon");
-	}
+    std::expected<ParsedColon, ParseError> operator()(std::string_view input) const
+    {
+        if (input.empty())
+            return std::unexpected("empty");
+        if (input.front() == ':')
+            return ParsedColon{ .remainder=input.substr(1) };
+        return std::unexpected("Expected colon");
+    }
 };
 
 struct parse_assignment
 {
-	std::expected<ParsedAssignment, ParseError> operator()(std::string_view input) const
-	{
-		if (input.size() < 2)
-			return std::unexpected("not enough chars for assingmnent operator");
-		if (input.starts_with(":="))
-			return ParsedAssignment{ input.substr(2) };
-		return std::unexpected("Expected assignment operator");
-	}
+    std::expected<ParsedAssignment, ParseError> operator()(std::string_view input) const
+    {
+        if (input.size() < 2)
+            return std::unexpected("not enough chars for assingmnent operator");
+        if (input.starts_with(":="))
+            return ParsedAssignment{ input.substr(2) };
+        return std::unexpected("Expected assignment operator");
+    }
 };
 
 struct parse_type_name
 {
-	std::expected<ParsedType, ParseError> operator()(std::string_view input) const
-	{
-		return parse_identifier{}(input).and_then(
-			[](ParsedIdentifier x) -> std::expected<ParsedType, ParseError> {
-				return ParsedType{ .name = x.identifier, .remainder = x.remainder };
-			});
-	}
+    std::expected<ParsedType, ParseError> operator()(std::string_view input) const
+    {
+        return parse_identifier{}(input).and_then(
+            [](ParsedIdentifier x) -> std::expected<ParsedType, ParseError> {
+                return ParsedType{ .name = x.identifier, .remainder = x.remainder };
+            });
+    }
 };
 
 struct parse_nat_literal
 {
-	std::expected<ParsedNatLiteral, ParseError> operator()(std::string_view input) const
-	{
-		auto it = std::find_if_not(input.begin(), input.end(), is_digit);
-		size_t literal_end = std::distance(input.begin(), it);
-		if (literal_end == 0)
-			return std::unexpected("Expected Nat literal");
-		return ParsedNatLiteral{
-			.literal = input.substr(0, literal_end),
-			.remainder = input.substr(literal_end)
-		};
-	}
+    std::expected<ParsedNatLiteral, ParseError> operator()(std::string_view input) const
+    {
+        auto it = std::find_if_not(input.begin(), input.end(), is_digit);
+        size_t literal_end = std::distance(input.begin(), it);
+        if (literal_end == 0)
+            return std::unexpected("Expected Nat literal");
+        return ParsedNatLiteral{
+            .literal = input.substr(0, literal_end),
+            .remainder = input.substr(literal_end)
+        };
+    }
 };
 
 struct parse_bool_literal
 {
-	std::expected<ParsedBoolLiteral, ParseError> operator()(std::string_view input) const
-	{
-		auto it = std::find_if_not(input.begin(), input.end(), is_alpha);
-		size_t literal_end = std::distance(input.begin(), it);
-		if (literal_end == 0)
-			return std::unexpected("Expected Bool literal");
-		auto literal = input.substr(0, literal_end);
-		if (literal == "true" || literal == "false")
-			return ParsedBoolLiteral{
-				.literal = input.substr(0, literal_end),
-				.remainder = input.substr(literal_end)
-			};
-		return std::unexpected("invalid bool literal: " + std::string(literal));
-	}
+    std::expected<ParsedBoolLiteral, ParseError> operator()(std::string_view input) const
+    {
+        auto it = std::find_if_not(input.begin(), input.end(), is_alpha);
+        size_t literal_end = std::distance(input.begin(), it);
+        if (literal_end == 0)
+            return std::unexpected("Expected Bool literal");
+        auto literal = input.substr(0, literal_end);
+        if (literal == "true" || literal == "false")
+            return ParsedBoolLiteral{
+                .literal = input.substr(0, literal_end),
+                .remainder = input.substr(literal_end)
+            };
+        return std::unexpected("invalid bool literal: " + std::string(literal));
+    }
 };
 
 template<Keyword k>
@@ -299,30 +383,16 @@ std::expected<ParsedKeyword, ParseError> expect_keyword(ParsedKeyword val)
     return std::unexpected("wrong keyword");
 }
 
-std::expected<ParsedDummy, ParseError> begin_parse(std::string_view input)
-{
-    return ParsedDummy{ .remainder = input };
-}
-
-template <class Func>
-auto effect(Func const& func)
-{
-    return [&func](auto x) -> std::expected<decltype(x), ParseError> {
-        func(x);
-        return x;
-	};
-}
-
 struct parse_keyword
 {
     std::expected<ParsedKeyword, ParseError> operator()(std::string_view input) const
     {
-		if (input.starts_with("def"))
-		{
-			return ParsedKeyword{ .keyword = Keyword::DEF, .remainder = input.substr(3) };
-		}
-		return std::unexpected("Invalid keyword");
-	}
+        if (input.starts_with("def"))
+        {
+            return ParsedKeyword{ .keyword = Keyword::DEF, .remainder = input.substr(3) };
+        }
+        return std::unexpected("Invalid keyword");
+    }
 };
 
 std::expected<Constant, ParseError> parse_constant(std::string_view input)
@@ -386,9 +456,47 @@ std::expected<Command, ParseError> parse_command(std::string_view input)
     std::string type;
     auto result = begin_parse(input)
         .and_then(next<parse_hash>)
-        .and_then(immediate<parse_command_name>);
-        //.and_then(next<parse_expression>);
+        .and_then(immediate<parse_command_name>)
+        .and_then(next<parse_expression>);
     return std::unexpected("HI");
+}
+
+void print_parsed(auto&& parsed)
+{
+    using T = std::remove_cvref_t<decltype(parsed)>;
+    if constexpr (std::is_same_v<T, ParsedExpression>)
+    {
+        std::cout << "ParsedExpression" << "\n";
+        for (auto&& var : parsed.tokens)
+        {
+            std::visit([](Parsed auto&& p)
+            {
+                    using P = std::remove_cvref_t<decltype(p)>;
+                    std::cout << "    " << parsed_to_name<decltype(p)>() << "\n";
+                    if constexpr (std::is_same_v<P, ParsedIdentifier>)
+                        std::cout << "        " << p.identifier << "\n";
+            }, var);
+        }
+    }
+    else
+        static_assert("UNREACHABLE");
+
+}
+
+template <class P>
+constexpr std::string parsed_to_name()
+{
+    using T = std::remove_cvref_t<P>;
+    static_assert(Parsed<T>);
+
+    if constexpr (std::is_same_v<T, ParsedExpression>)
+        return "ParsedExpression";
+    else if constexpr (std::is_same_v<T, ParsedFunctionOperator>)
+        return "ParsedFunctionOperator";
+    else if constexpr (std::is_same_v<T, ParsedIdentifier>)
+        return "ParsedIdentifier";
+    else
+        static_assert("UNREACHABLE");
 }
 
 int main()
@@ -411,6 +519,19 @@ int main()
         else
             static_assert("unreachable");
     }, z.value());
+
+    std::string input4 = "Nat -> List Nat -> Nat";
+    auto z2 = begin_parse(input4).and_then(next<parse_expression>);
+    if (z2)
+    {
+
+        print_parsed(z2.value());
+    }
+    else
+    {
+        std::cout << "failed expression: " << z2.error() << "\n";
+    }
+
     if (x.has_value())
     {
         std::visit([](auto&& arg)
