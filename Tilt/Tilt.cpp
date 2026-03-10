@@ -117,16 +117,30 @@ struct ParsedAssignment
     std::string_view remainder;
 };
 
-struct ParsedKeyword
+struct ParsedKeywordDef
 {
-    Keyword keyword;
+    std::string_view identifier;
     std::string_view remainder;
 };
+
+struct ParsedKeywordAxiom
+{
+    std::string_view identifier;
+    std::string_view remainder;
+};
+
+using ParsedKeyword = std::variant<ParsedKeywordDef, ParsedKeywordAxiom>;
 
 struct ParsedExpression
 {
     std::string_view remainder;
     std::vector<combine_variants_t<std::variant<ParsedIdentifier>, ParsedOperator>> tokens;
+};
+
+struct ParsedAxiom
+{
+    std::string_view identifier;
+    ParsedExpression type;
 };
 
 std::expected<ParsedDummy, ParseError> begin_parse(std::string_view input)
@@ -375,23 +389,58 @@ struct parse_bool_literal
     }
 };
 
-template<Keyword k>
-std::expected<ParsedKeyword, ParseError> expect_keyword(ParsedKeyword val)
-{
-    if (val.keyword == k)
-        return val;
-    return std::unexpected("wrong keyword");
-}
-
 struct parse_keyword
 {
     std::expected<ParsedKeyword, ParseError> operator()(std::string_view input) const
     {
-        if (input.starts_with("def"))
-        {
-            return ParsedKeyword{ .keyword = Keyword::DEF, .remainder = input.substr(3) };
-        }
-        return std::unexpected("Invalid keyword");
+        return begin_parse(input)
+            .and_then(immediate<parse_identifier>)
+            .and_then([](ParsedIdentifier p) -> std::expected<ParsedKeyword, ParseError>
+            {
+                    if (p.identifier == "def")
+                        return ParsedKeywordDef{.identifier=p.identifier, .remainder=p.remainder};
+                    else if (p.identifier == "axiom")
+                        return ParsedKeywordAxiom{.identifier=p.identifier, .remainder=p.remainder};
+                    return std::unexpected("unexpected identifier: " + std::string{ p.identifier } + ". Expected keyword");
+            });
+    }
+};
+
+struct parse_keyword_def
+{
+    std::expected<ParsedKeywordDef, ParseError> operator()(std::string_view input) const
+    {
+        return begin_parse(input)
+            .and_then(immediate<parse_keyword>)
+            .and_then([](ParsedKeyword p)
+            {
+                    return std::visit([](Parsed auto&& keyword) -> std::expected<ParsedKeywordDef, ParseError>
+                    {
+                            using T = std::remove_cvref_t<decltype(keyword)>;
+                            if constexpr (std::is_same_v<T, ParsedKeywordDef>)
+                                return keyword;
+                            return std::unexpected("unexpected keyword: " + std::string{ keyword.identifier } + ". Expected def");
+                    }, p);
+            });
+    }
+};
+
+struct parse_keyword_axiom
+{
+    std::expected<ParsedKeywordAxiom, ParseError> operator()(std::string_view input) const
+    {
+        return begin_parse(input)
+            .and_then(immediate<parse_keyword>)
+            .and_then([](ParsedKeyword p)
+            {
+                    return std::visit([](Parsed auto&& keyword) -> std::expected<ParsedKeywordAxiom, ParseError>
+                    {
+                            using T = std::remove_cvref_t<decltype(keyword)>;
+                            if constexpr (std::is_same_v<T, ParsedKeywordAxiom>)
+                                return keyword;
+                            return std::unexpected("unexpected keyword: " + std::string{ keyword.identifier } + ". Expected def");
+                    }, p);
+            });
     }
 };
 
@@ -401,8 +450,7 @@ std::expected<Constant, ParseError> parse_constant(std::string_view input)
     std::string name;
     std::string type;
     auto result = begin_parse(input)
-        .and_then(next<parse_keyword>)
-        .and_then(expect_keyword<Keyword::DEF>)
+        .and_then(next<parse_keyword_def>)
         .and_then(next<parse_identifier>)
         .and_then(effect([&name](ParsedIdentifier x) {name = x.identifier; }))
         .and_then(next<parse_colon>)
@@ -461,6 +509,24 @@ std::expected<Command, ParseError> parse_command(std::string_view input)
     return std::unexpected("HI");
 }
 
+struct parse_axiom
+{
+    std::expected<ParsedAxiom, ParseError> operator()(std::string_view input) const
+    {
+        std::optional<std::string_view> identifier;
+        std::optional<ParsedExpression> type;
+
+        return begin_parse(input)
+            .and_then(immediate<parse_keyword_axiom>)
+            .and_then(next<parse_identifier>)
+            .and_then(effect([&identifier](ParsedIdentifier p) { identifier = p.identifier; }))
+            .and_then(next<parse_colon>)
+            .and_then(next<parse_expression>)
+            .and_then(effect([&type](ParsedExpression p) { type = p; }))
+            .transform([&identifier, &type](auto&& unused) { return ParsedAxiom{ .identifier = *identifier, .type = *type }; });
+    }
+};
+
 void print_parsed(auto&& parsed)
 {
     using T = std::remove_cvref_t<decltype(parsed)>;
@@ -478,8 +544,14 @@ void print_parsed(auto&& parsed)
             }, var);
         }
     }
+    else if constexpr (std::is_same_v<T, ParsedAxiom>)
+    {
+        std::cout << "ParsedAxiom" << "\n";
+        std::cout << "    " << parsed.identifier << "\n";
+        print_parsed(parsed.type);
+    }
     else
-        static_assert("UNREACHABLE");
+        static_assert(false, "UNREACHABLE");
 
 }
 
@@ -496,7 +568,7 @@ constexpr std::string parsed_to_name()
     else if constexpr (std::is_same_v<T, ParsedIdentifier>)
         return "ParsedIdentifier";
     else
-        static_assert("UNREACHABLE");
+        static_assert(false, "UNREACHABLE");
 }
 
 int main()
@@ -517,7 +589,7 @@ int main()
         else if constexpr (std::is_same_v<T, ParsedIdentifier>)
             std::cout << "IDEN\n";
         else
-            static_assert("unreachable");
+            static_assert(false, "unreachable");
     }, z.value());
 
     std::string input4 = "Nat -> List Nat -> Nat";
@@ -543,4 +615,12 @@ int main()
     }
     else
         std::cout << x.error() << "\n";
+
+    std::string input5 = "axiom mynum : Nat -> Nat -> False";
+    begin_parse(input5)
+        .and_then(immediate<parse_axiom>)
+        .transform([](ParsedAxiom p)
+        {
+                print_parsed(p);
+        });
 }
