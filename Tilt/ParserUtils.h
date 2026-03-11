@@ -120,7 +120,7 @@ constexpr bool is_identifier(char c)
 
 constexpr bool is_control(char c)
 {
-    return c == '-' || c == '>';
+    return c == '-' || c == '>' || c == ':' || c == '=';
 }
 
 std::string_view consume_whitespace(std::string_view input)

@@ -95,6 +95,12 @@ struct ParsedIdentifier
     std::string_view remainder;
 };
 
+struct ParsedControl
+{
+    std::string_view control;
+    std::string_view remainder;
+};
+
 struct ParsedFunctionOperator
 {
     std::string_view remainder;
@@ -129,7 +135,13 @@ struct ParsedKeywordAxiom
     std::string_view remainder;
 };
 
-using ParsedKeyword = std::variant<ParsedKeywordDef, ParsedKeywordAxiom>;
+struct ParsedKeywordTheorem
+{
+    std::string_view identifier;
+    std::string_view remainder;
+};
+
+using ParsedKeyword = std::variant<ParsedKeywordDef, ParsedKeywordAxiom, ParsedKeywordTheorem>;
 
 struct ParsedExpression
 {
@@ -137,10 +149,19 @@ struct ParsedExpression
     std::vector<combine_variants_t<std::variant<ParsedIdentifier>, ParsedOperator>> tokens;
 };
 
+struct ParsedTheorem
+{
+    std::string_view identifier;
+    ParsedExpression type;
+    ParsedExpression value;
+    std::string_view remainder;
+};
+
 struct ParsedAxiom
 {
     std::string_view identifier;
     ParsedExpression type;
+    std::string_view remainder;
 };
 
 std::expected<ParsedDummy, ParseError> begin_parse(std::string_view input)
@@ -183,18 +204,31 @@ struct parse_identifier
     }
 };
 
+struct parse_control
+{
+    std::expected<ParsedControl, ParseError> operator()(std::string_view input) const
+    {
+        auto it = std::find_if_not(input.begin(), input.end(), is_control);
+        size_t operator_end = std::distance(input.begin(), it);
+        std::string_view control = input.substr(0, operator_end);
+        if (operator_end != 0)
+            return ParsedControl{ .control = control, .remainder = input.substr(operator_end) };
+        return std::unexpected("Invalid operator: " + std::string{ control });
+    }
+};
+
 struct parse_operator
 {
     std::expected<ParsedOperator, ParseError> operator()(std::string_view input) const
     {
-        auto it = std::find_if_not(input.begin(), input.end(), is_control);
-        size_t operator_end = std::distance(input.begin(), it);
-        std::string_view op = input.substr(0, operator_end);
-        if (op == "->")
-            return ParsedFunctionOperator{
-                .remainder = input.substr(operator_end)
-            };
-        return std::unexpected("Invalid operator: " + std::string{ op });
+        return begin_parse(input)
+            .and_then(immediate <parse_control>)
+            .and_then([](ParsedControl p) -> std::expected<ParsedOperator, ParseError>
+            {
+                    if (p.control == "->")
+                        return ParsedFunctionOperator{ .remainder = p.remainder };
+                    return std::unexpected("Invalid operator: " + std::string{ p.control });
+            });
     }
 };
 
@@ -337,11 +371,14 @@ struct parse_assignment
 {
     std::expected<ParsedAssignment, ParseError> operator()(std::string_view input) const
     {
-        if (input.size() < 2)
-            return std::unexpected("not enough chars for assingmnent operator");
-        if (input.starts_with(":="))
-            return ParsedAssignment{ input.substr(2) };
-        return std::unexpected("Expected assignment operator");
+        return begin_parse(input)
+            .and_then(immediate <parse_control>)
+            .and_then([](ParsedControl p) -> std::expected<ParsedAssignment, ParseError>
+            {
+                    if (p.control == ":=")
+                        return ParsedAssignment{ .remainder = p.remainder };
+                    return std::unexpected("Expected assignment. Got: " + std::string{ p.control });
+            });
     }
 };
 
@@ -401,6 +438,8 @@ struct parse_keyword
                         return ParsedKeywordDef{.identifier=p.identifier, .remainder=p.remainder};
                     else if (p.identifier == "axiom")
                         return ParsedKeywordAxiom{.identifier=p.identifier, .remainder=p.remainder};
+                    else if (p.identifier == "theorem")
+                        return ParsedKeywordTheorem{.identifier=p.identifier, .remainder=p.remainder};
                     return std::unexpected("unexpected identifier: " + std::string{ p.identifier } + ". Expected keyword");
             });
     }
@@ -439,6 +478,25 @@ struct parse_keyword_axiom
                             if constexpr (std::is_same_v<T, ParsedKeywordAxiom>)
                                 return keyword;
                             return std::unexpected("unexpected keyword: " + std::string{ keyword.identifier } + ". Expected def");
+                    }, p);
+            });
+    }
+};
+
+struct parse_keyword_theorem
+{
+    std::expected<ParsedKeywordTheorem, ParseError> operator()(std::string_view input) const
+    {
+        return begin_parse(input)
+            .and_then(immediate<parse_keyword>)
+            .and_then([](ParsedKeyword p)
+            {
+                    return std::visit([](Parsed auto&& keyword) -> std::expected<ParsedKeywordTheorem, ParseError>
+                    {
+                            using T = std::remove_cvref_t<decltype(keyword)>;
+                            if constexpr (std::is_same_v<T, ParsedKeywordTheorem>)
+                                return keyword;
+                            return std::unexpected("unexpected keyword: " + std::string{ keyword.identifier } + ". Expected theorem");
                     }, p);
             });
     }
@@ -523,7 +581,32 @@ struct parse_axiom
             .and_then(next<parse_colon>)
             .and_then(next<parse_expression>)
             .and_then(effect([&type](ParsedExpression p) { type = p; }))
-            .transform([&identifier, &type](auto&& unused) { return ParsedAxiom{ .identifier = *identifier, .type = *type }; });
+            .transform([&identifier, &type](ParsedExpression p) { return ParsedAxiom{ .identifier = *identifier, .type = *type , .remainder=p.remainder}; });
+    }
+};
+
+struct parse_theorem
+{
+    std::expected<ParsedTheorem, ParseError> operator()(std::string_view input) const
+    {
+        std::optional<std::string_view> identifier;
+        std::optional<ParsedExpression> type;
+        std::optional<ParsedExpression> value;
+
+        return begin_parse(input)
+            .and_then(immediate<parse_keyword_theorem>)
+            .and_then(next<parse_identifier>)
+            .and_then(effect([&identifier](ParsedIdentifier p) { identifier = p.identifier; }))
+            .and_then(next<parse_colon>)
+            .and_then(next<parse_expression>)
+            .and_then(effect([&type](ParsedExpression p) { type = p; }))
+            .and_then(next<parse_assignment>)
+            .and_then(next<parse_expression>)
+            .and_then(effect([&value](ParsedExpression p) { value = p; }))
+            .transform([&identifier, &type, &value](ParsedExpression p)
+            {
+                    return ParsedTheorem{ .identifier = *identifier, .type = *type, .value = *value, .remainder = p.remainder};
+            });
     }
 };
 
@@ -549,6 +632,13 @@ void print_parsed(auto&& parsed)
         std::cout << "ParsedAxiom" << "\n";
         std::cout << "    " << parsed.identifier << "\n";
         print_parsed(parsed.type);
+    }
+    else if constexpr (std::is_same_v<T, ParsedTheorem>)
+    {
+        std::cout << "ParsedTheorem" << "\n";
+        std::cout << "    " << parsed.identifier << "\n";
+        print_parsed(parsed.type);
+        print_parsed(parsed.value);
     }
     else
         static_assert(false, "UNREACHABLE");
@@ -577,6 +667,19 @@ int main()
     std::string input2 = "#check hello";
     std::string input3 = "identifier check";
     auto x = parse_constant(input);
+
+    if (x.has_value())
+    {
+        std::visit([](auto&& arg)
+            {
+                std::cout << arg.name << "\n";
+                std::cout << arg.type << "\n";
+                std::cout << arg.value << "\n";
+            }, *x);
+    }
+    else
+        std::cout << x.error() << "\n";
+
     auto y = parse_command(input2);
     auto z = begin_parse(input3).and_then(immediate<any<parse_command_name, parse_identifier>>);
     std::visit([](auto&& arg)
@@ -593,6 +696,7 @@ int main()
     }, z.value());
 
     std::string input4 = "Nat -> List Nat -> Nat";
+    std::cout << "\nPARSING EXPRESSION " << input4 << "\n";
     auto z2 = begin_parse(input4).and_then(next<parse_expression>);
     if (z2)
     {
@@ -604,22 +708,20 @@ int main()
         std::cout << "failed expression: " << z2.error() << "\n";
     }
 
-    if (x.has_value())
-    {
-        std::visit([](auto&& arg)
-            {
-                std::cout << arg.name << "\n";
-                std::cout << arg.type << "\n";
-                std::cout << arg.value << "\n";
-            }, *x);
-    }
-    else
-        std::cout << x.error() << "\n";
-
     std::string input5 = "axiom mynum : Nat -> Nat -> False";
+    std::cout << "\nPARSING AXIOM " << input5 << "\n";
     begin_parse(input5)
         .and_then(immediate<parse_axiom>)
         .transform([](ParsedAxiom p)
+        {
+                print_parsed(p);
+        });
+
+    std::string input6 = "theorem mynum : Nat -> Nat -> False := 3";
+    std::cout << "\nPARSING THEOREM " << input6 << "\n";
+    auto something = begin_parse(input6)
+        .and_then(immediate<parse_theorem>)
+        .transform([](ParsedTheorem p)
         {
                 print_parsed(p);
         });
