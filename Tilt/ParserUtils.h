@@ -2,6 +2,7 @@
 
 #include <type_traits>
 
+#include "StringLiteral.h"
 #include "VariantUtils.h"
 
 using ParseError = std::string;
@@ -140,6 +141,35 @@ std::string_view consume_whitespace(std::string_view input)
 
 namespace
 {
+std::string_view next_token_impl(std::string_view input, auto&& filter)
+{
+    std::size_t i = 0;
+    while (true)
+    {
+        if (i < input.size() && filter(input[i]))
+            i++;
+        else
+            break;
+    }
+    return input.substr(0, i);
+}
+}
+
+std::string_view next_token(std::string_view input)
+{
+    input = consume_whitespace(input);
+    if (input.empty())
+        return {};
+    char c = input.front();
+    if (is_identifier(c))
+        return next_token_impl(input, [](char c) { return is_identifier(c); });
+    if (is_control(c))
+        return next_token_impl(input, [](char c) { return is_control(c); });
+    return input.substr(0, 1);
+}
+
+namespace
+{
 template <class Func>
 struct next_impl
 {
@@ -177,7 +207,7 @@ struct immediate_impl
 template <class Func>
 inline constexpr auto immediate = immediate_impl<Func>{};
 
-template <Parser... Parsers>
+template <StringLiteral Error, Parser... Parsers>
 struct any
 {
 	using CombinedParsedType = combine_variants_t<get_variant_return_t<Parsers>...>;
@@ -203,8 +233,8 @@ struct any
 		(... || apply_parser.template operator()<Parsers>());
 
         return result
-            .transform([](CombinedParsedType x) {return ReturnType{x}; })
-            .value_or(std::unexpected("parse any failed"));
+            .transform([](CombinedParsedType x) {return ReturnType{ x }; })
+            .value_or(std::unexpected("unexpected token '" + std::string{ next_token(input) } + "'; " + std::string{Error.value}));
 	}
 };
 

@@ -132,6 +132,7 @@
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="ParserUtils.h" />
+    <ClInclude Include="StringLiteral.h" />
     <ClInclude Include="VariantUtils.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
