@@ -19,11 +19,6 @@
 #include "VariantUtils.h"
 
 
-enum class Keyword
-{
-    DEF
-};
-
 struct NatConstant
 {
     std::string name;
@@ -151,7 +146,19 @@ struct ParsedKeywordTheorem
     std::string_view remainder;
 };
 
-using ParsedKeyword = std::variant<ParsedKeywordDef, ParsedKeywordAxiom, ParsedKeywordTheorem>;
+struct ParsedKeywordInductive
+{
+    std::string_view identifier;
+    std::string_view remainder;
+};
+
+struct ParsedKeywordWhere
+{
+    std::string_view identifier;
+    std::string_view remainder;
+};
+
+using ParsedKeyword = std::variant<ParsedKeywordDef, ParsedKeywordAxiom, ParsedKeywordTheorem, ParsedKeywordInductive, ParsedKeywordWhere>;
 
 struct ParsedExpression
 {
@@ -171,6 +178,11 @@ struct ParsedAxiom
 {
     std::string_view identifier;
     ParsedExpression type;
+    std::string_view remainder;
+};
+
+struct ParsedInductiveType
+{
     std::string_view remainder;
 };
 
@@ -506,6 +518,10 @@ struct parse_keyword
                         return ParsedKeywordAxiom{.identifier=p.identifier, .remainder=p.remainder};
                     else if (p.identifier == "theorem")
                         return ParsedKeywordTheorem{.identifier=p.identifier, .remainder=p.remainder};
+                    else if (p.identifier == "inductive")
+                        return ParsedKeywordInductive{.identifier=p.identifier, .remainder=p.remainder};
+                    else if (p.identifier == "where")
+                        return ParsedKeywordInductive{.identifier=p.identifier, .remainder=p.remainder};
                     return std::unexpected("unexpected identifier: " + std::string{ p.identifier } + ". Expected keyword");
             });
     }
@@ -563,6 +579,44 @@ struct parse_keyword_theorem
                             if constexpr (std::is_same_v<T, ParsedKeywordTheorem>)
                                 return keyword;
                             return std::unexpected("unexpected keyword: " + std::string{ keyword.identifier } + ". Expected theorem");
+                    }, p);
+            });
+    }
+};
+
+struct parse_keyword_inductive
+{
+    std::expected<ParsedKeywordInductive, ParseError> operator()(std::string_view input) const
+    {
+        return begin_parse(input)
+            .and_then(immediate<parse_keyword>)
+            .and_then([](ParsedKeyword p)
+            {
+                    return std::visit([](Parsed auto&& keyword) -> std::expected<ParsedKeywordInductive, ParseError>
+                    {
+                            using T = std::remove_cvref_t<decltype(keyword)>;
+                            if constexpr (std::is_same_v<T, ParsedKeywordInductive>)
+                                return keyword;
+                            return std::unexpected("unexpected keyword: " + std::string{ keyword.identifier } + ". Expected inductive");
+                    }, p);
+            });
+    }
+};
+
+struct parse_keyword_where
+{
+    std::expected<ParsedKeywordWhere, ParseError> operator()(std::string_view input) const
+    {
+        return begin_parse(input)
+            .and_then(immediate<parse_keyword>)
+            .and_then([](ParsedKeyword p)
+            {
+                    return std::visit([](Parsed auto&& keyword) -> std::expected<ParsedKeywordWhere, ParseError>
+                    {
+                            using T = std::remove_cvref_t<decltype(keyword)>;
+                            if constexpr (std::is_same_v<T, ParsedKeywordWhere>)
+                                return keyword;
+                            return std::unexpected("unexpected keyword: " + std::string{ keyword.identifier } + ". Expected where");
                     }, p);
             });
     }
@@ -676,6 +730,18 @@ struct parse_theorem
     }
 };
 
+struct parse_inductive_type
+{
+    std::expected<ParsedInductiveType, ParseError> operator()(std::string_view input) const
+    {
+        begin_parse(input)
+            .and_then(immediate<parse_keyword_inductive>)
+            .and_then(next<parse_identifier>)
+            .and_then(next<parse_keyword_where>);
+        return std::unexpected("how");
+    }
+};
+
 void print_parsed(auto&& parsed)
 {
     using T = std::remove_cvref_t<decltype(parsed)>;
@@ -705,6 +771,10 @@ void print_parsed(auto&& parsed)
         std::cout << "    " << parsed.identifier << "\n";
         print_parsed(parsed.type);
         print_parsed(parsed.value);
+    }
+    else if constexpr (std::is_same_v<T, ParsedInductiveType>)
+    {
+        std::cout << "ParsedInductiveType" << "\n";
     }
     else
         static_assert(false, "UNREACHABLE");
@@ -750,22 +820,9 @@ int main()
             }, *x);
     }
     else
-        std::cout << x.error() << "\n";
+        std::cout << "FAIL " << x.error() << "\n";
 
     auto y = parse_command(input2);
-    auto z = begin_parse(input3).and_then(immediate<any<"Expected something", parse_command_name, parse_identifier>>);
-    std::visit([](auto&& arg)
-    {
-        using T = std::decay_t<decltype(arg)>;
-        if constexpr (std::is_same_v<T, ParsedEvalCommand>)
-            std::cout << "EVAL\n";
-        else if constexpr (std::is_same_v<T, ParsedCheckCommand>)
-            std::cout << "CHECK\n";
-        else if constexpr (std::is_same_v<T, ParsedIdentifier>)
-            std::cout << "IDEN\n";
-        else
-            static_assert(false, "unreachable");
-    }, z.value());
 
     std::string input4 = "Nat -> List Nat -> Nat";
     std::cout << "\nPARSING EXPRESSION " << input4 << "\n";
@@ -780,25 +837,41 @@ int main()
         std::cout << "failed expression: " << z2.error() << "\n";
     }
 
-    std::string input5 = "axiom mynum : Nat -> Nat -> False";
-    std::cout << "\nPARSING AXIOM " << input5 << "\n";
-    begin_parse(input5)
-        .and_then(immediate<parse_axiom>)
-        .transform([](ParsedAxiom p)
-        {
-                print_parsed(p);
-        });
+    {
+        std::string input = "axiom mynum : Nat -> Nat -> False";
+        std::cout << "\nPARSING AXIOM " << input << "\n";
+        auto res = begin_parse(input)
+            .and_then(immediate<parse_axiom>);
+        if (res)
+            print_parsed(res.value());
+        else
+            std::cout << "FAIL " << res.error() << "\n";
+    }
 
-    //std::string input6 = "theorem cooltheorem : (p : Prop) -> p -> p := sorry";
+    {
 
-    std::string input6 = "theorem myt : (p : Prop) -> p -> p := fun x : Prop => fun y : x => (y : x)";
-    std::cout << "\nPARSING THEOREM " << input6 << "\n";
-    auto something = begin_parse(input6)
-        .and_then(immediate<parse_theorem>)
-        .transform([](ParsedTheorem p)
-        {
-                print_parsed(p);
-        });
-    if (!something)
-        std::cout << something.error() << "\n";
+        std::string input = "theorem myt : (p : Prop) -> p -> p := fun x : Prop => fun y : x => (y : x)";
+        std::cout << "\nPARSING THEOREM " << input << "\n";
+        auto res = begin_parse(input)
+            .and_then(immediate<parse_theorem>);
+        if (res)
+            print_parsed(res.value());
+        else
+            std::cout << "FAIL " << res.error() << "\n";
+    }
+
+    std::string input7 = "inductive Weekday where\n"
+        "| sunday : Weekday\n"
+        "| monday : Weekday\n"
+        "| tuesday : Weekday\n"
+        "| wednesday : Weekday\n"
+        "| thursday : Weekday\n"
+        "| friday : Weekday\n"
+        "| saturday : Weekday\n";
+    std::cout << "\nPARSING INDUCTIVE TYPE " << input7 << "\n";
+    auto parsed_inductive_type = begin_parse(input7).and_then(immediate<parse_inductive_type>);
+    if (parsed_inductive_type)
+        print_parsed(parsed_inductive_type.value());
+    else
+        std::cout << "FAIL " << parsed_inductive_type.error() << "\n";
 }
