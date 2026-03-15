@@ -33,7 +33,11 @@ struct BoolConstant
     std::string type = "Bool";
 };
 
-using Constant = std::variant<NatConstant, BoolConstant>;
+struct ParsedConstant
+{
+    std::variant<NatConstant, BoolConstant> value;
+    std::string_view remainder;
+};
 
 struct Expression
 {
@@ -648,58 +652,60 @@ struct parse_keyword_where
     }
 };
 
-std::expected<Constant, ParseError> parse_constant(std::string_view input)
+struct parse_constant
 {
+    std::expected<ParsedConstant, ParseError> operator()(std::string_view input) const
+    {
+        std::string name;
+        std::string type;
+        auto result = begin_parse(input)
+            .and_then(next<parse_keyword_def>)
+            .and_then(next<parse_identifier>)
+            .and_then(effect([&name](ParsedIdentifier x) {name = x.identifier; }))
+            .and_then(next<parse_colon>)
+            .and_then(next<parse_type_name>)
+            .and_then(effect([&type](ParsedType x) {type = x.name; }))
+            .and_then(next<parse_assignment>)
+            .and_then([&type](auto x) -> std::expected<std::variant<ParsedNatLiteral, ParsedBoolLiteral>, ParseError>
+            {
+                    if (type == "Nat")
+                    {
+                        return next<parse_nat_literal>(x);
+                    }
+                    else if (type == "Bool")
+                    {
+                        return next<parse_bool_literal>(x);
 
-    std::string name;
-    std::string type;
-    auto result = begin_parse(input)
-        .and_then(next<parse_keyword_def>)
-        .and_then(next<parse_identifier>)
-        .and_then(effect([&name](ParsedIdentifier x) {name = x.identifier; }))
-        .and_then(next<parse_colon>)
-        .and_then(next<parse_type_name>)
-        .and_then(effect([&type](ParsedType x) {type = x.name; }))
-        .and_then(next<parse_assignment>)
-        .and_then([&type](auto x) -> std::expected<std::variant<ParsedNatLiteral, ParsedBoolLiteral>, ParseError>
-        {
-                if (type == "Nat")
-                {
-                    return next<parse_nat_literal>(x);
-                }
-                else if (type == "Bool")
-                {
-                    return next<parse_bool_literal>(x);
+                    }
+                    else
+                    {
+                        return std::unexpected("Unexpected type " + type);
+                    }
+            })
+            .and_then([&name](auto x) -> std::expected<ParsedConstant, ParseError>
+            {
+                    return std::visit([&name](auto arg) -> ParsedConstant
+                    {
+                            using T = std::decay_t<decltype(arg)>;
+                            if constexpr (std::is_same_v<T, ParsedNatLiteral>)
+                                return ParsedConstant{ .value = NatConstant{
+                                    .name = name,
+                                    .value = std::stoi(std::string(arg.literal))
+                            }, .remainder=arg.remainder };
+                            else if constexpr (std::is_same_v<T, ParsedBoolLiteral>)
+                                return ParsedConstant{ .value = BoolConstant{
+                                    .name = name,
+                                    .value = arg.literal == "true"
+                            }, .remainder = arg.remainder };
+                            else
+                                static_assert(false, "should be unreachable");
 
-                }
-                else
-                {
-                    return std::unexpected("Unexpected type " + type);
-                }
-        })
-        .and_then([&name](auto x) -> std::expected<Constant, ParseError>
-        {
-                return std::visit([&name](auto arg) -> Constant
-                {
-                        using T = std::decay_t<decltype(arg)>;
-                        if constexpr (std::is_same_v<T, ParsedNatLiteral>)
-                            return NatConstant{
-                                .name = name,
-                                .value = std::stoi(std::string(arg.literal))
-                        };
-                        else if constexpr (std::is_same_v<T, ParsedBoolLiteral>)
-                            return BoolConstant{
-                                .name = name,
-                                .value = arg.literal == "true"
-                        };
-                        else
-                            static_assert(false, "should be unreachable");
+                    }, x);
+            });
 
-                }, x);
-        });
-
-    return result;
-}
+        return result;
+    }
+};
 
 std::expected<Command, ParseError> parse_command(std::string_view input)
 {
@@ -768,7 +774,7 @@ struct parse_inductive_type
     }
 };
 
-void print_parsed(auto&& parsed)
+void print_parsed(Parsed auto&& parsed)
 {
     using T = std::remove_cvref_t<decltype(parsed)>;
     if constexpr (std::is_same_v<T, ParsedExpression>)
@@ -801,6 +807,25 @@ void print_parsed(auto&& parsed)
     else if constexpr (std::is_same_v<T, ParsedInductiveType>)
     {
         std::cout << "ParsedInductiveType" << "\n";
+    }
+    else if constexpr (is_parsed_zero_or_more_v<T>)
+    {
+        std::cout << "ParsedZeroOrMore (Size: " << parsed.value.size() << ")\n";
+        for (size_t i = 0; i < parsed.value.size(); i++)
+        {
+            std::cout << "INDEX " << i << "\n";
+            print_parsed(parsed.value[i]);
+        }
+    }
+    else if constexpr (std::is_same_v<T, ParsedConstant>)
+    {
+        std::cout << "ParsedConstant\n";
+        std::visit([](auto&& arg)
+        {
+                std::cout << arg.name << "\n";
+                std::cout << arg.type << "\n";
+                std::cout << arg.value << "\n";
+        }, parsed.value);
     }
     else
         static_assert(false, "UNREACHABLE");
@@ -836,7 +861,7 @@ int main()
     std::string input = "def hello : Nat := 12938\n";
     std::string input2 = "#check hello";
     std::string input3 = "identifier check";
-    auto x = parse_constant(input);
+    auto x = begin_parse(input).and_then(immediate<parse_constant>);
 
     if (x.has_value())
     {
@@ -845,7 +870,7 @@ int main()
                 std::cout << arg.name << "\n";
                 std::cout << arg.type << "\n";
                 std::cout << arg.value << "\n";
-            }, *x);
+            }, x->value);
     }
     else
         std::cout << "FAIL " << x.error() << "\n";
@@ -877,11 +902,21 @@ int main()
     }
 
     {
-
         std::string input = "theorem myt : (p : Prop) -> p -> p := fun x : Prop => fun y : x => (y : x)";
         std::cout << "\nPARSING THEOREM " << input << "\n";
         auto res = begin_parse(input)
             .and_then(immediate<parse_theorem>);
+        if (res)
+            print_parsed(res.value());
+        else
+            std::cout << "FAIL " << res.error() << "\n";
+    }
+
+    {
+        std::string input = "def Hello : Nat := 3\ndef World : Bool := false";
+        std::cout << "\nPARSING MULTIPLE CONSTANT " << input << "\n";
+        auto res = begin_parse(input)
+            .and_then(immediate<zero_or_more<parse_constant>>);
         if (res)
             print_parsed(res.value());
         else
@@ -902,4 +937,5 @@ int main()
         print_parsed(parsed_inductive_type.value());
     else
         std::cout << "FAIL " << parsed_inductive_type.error() << "\n";
+
 }

@@ -170,3 +170,46 @@ struct any
 	}
 };
 
+template <Parsed P>
+struct ParsedZeroOrMore
+{
+    std::vector<P> value;
+    std::string_view remainder;
+};
+
+template<class T>
+struct is_parsed_zero_or_more : std::false_type {};
+
+template<class... Ts>
+struct is_parsed_zero_or_more<ParsedZeroOrMore<Ts...>> : std::true_type {};
+
+template<class T>
+constexpr bool is_parsed_zero_or_more_v = is_parsed_zero_or_more<T>::value;
+
+template <Parser P>
+struct zero_or_more
+{
+    using ParsedSubType = get_parser_value_t<P>;
+    using ParsedType = ParsedZeroOrMore<ParsedSubType>;
+    using ReturnType = std::expected<ParsedType, ParseError>;
+
+    ReturnType operator()(std::string_view input) const
+    {
+        std::vector<ParsedSubType> value;
+        auto parser = P{};
+        while (true)
+        {
+            auto res = parser(input)
+                .transform([&value, &input](ParsedSubType p)
+                {
+                        value.push_back(p);
+                        input = p.remainder;
+                        return p;
+                });
+
+            if (!res)
+                break;
+        }
+        return ParsedType{ .value = std::move(value), .remainder = input };
+    }
+};
