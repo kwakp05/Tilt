@@ -55,11 +55,6 @@ struct EvalCommand
 
 using Command = std::variant<CheckCommand, EvalCommand>;
 
-struct ParsedDummy
-{
-    std::string_view remainder;
-};
-
 struct ParsedCheckCommand
 {
     std::string_view remainder;
@@ -138,6 +133,11 @@ struct ParsedColon
     std::string_view remainder;
 };
 
+struct ParsedVerticalBar
+{
+    std::string_view remainder;
+};
+
 struct ParsedAssignment
 {
     std::string_view remainder;
@@ -196,15 +196,19 @@ struct ParsedAxiom
     std::string_view remainder;
 };
 
-struct ParsedInductiveType
+struct ParsedConstructor
 {
+    ParsedIdentifier identifier;
+    ParsedType type;
     std::string_view remainder;
 };
 
-std::expected<ParsedDummy, ParseError> begin_parse(std::string_view input)
+struct ParsedInductiveType
 {
-    return ParsedDummy{ .remainder = input };
-}
+    ParsedIdentifier identifier;
+    std::vector<ParsedConstructor> constructors;
+    std::string_view remainder;
+};
 
 template <class Func>
 auto effect(Func const& func)
@@ -302,6 +306,21 @@ struct parse_colon
             {
                     if (p.control == ":")
                         return ParsedColon{ .remainder = p.remainder };
+                    return std::unexpected("Expected ':' but got " + std::string{ p.control });
+            });
+    }
+};
+
+struct parse_vertical_bar
+{
+    std::expected<ParsedVerticalBar, ParseError> operator()(std::string_view input) const
+    {
+        return begin_parse(input)
+            .and_then(immediate<parse_control>)
+            .and_then([](ParsedControl p) -> std::expected<ParsedVerticalBar, ParseError>
+            {
+                    if (p.control == "|")
+                        return ParsedVerticalBar{ .remainder = p.remainder };
                     return std::unexpected("Expected ':' but got " + std::string{ p.control });
             });
     }
@@ -762,15 +781,42 @@ struct parse_theorem
     }
 };
 
+struct parse_constructor
+{
+    std::expected<ParsedConstructor, ParseError> operator()(std::string_view input) const
+    {
+        std::optional<ParsedIdentifier> parsed_identifier;
+        std::optional<ParsedType> parsed_type;
+
+        return begin_parse(input)
+            .and_then(immediate<parse_vertical_bar>)
+            .and_then(next<parse_identifier>)
+            .and_then(effect([&parsed_identifier](ParsedIdentifier p) { parsed_identifier = p; }))
+            .and_then(next<parse_colon>)
+            .and_then(next<parse_type_name>)
+            .and_then(effect([&parsed_type](ParsedType p) { parsed_type = p; }))
+            .transform([parsed_identifier, parsed_type](Parsed auto&& p) { return ParsedConstructor{.identifier=*parsed_identifier, .type=*parsed_type, .remainder=p.remainder}; });
+    }
+};
+
 struct parse_inductive_type
 {
     std::expected<ParsedInductiveType, ParseError> operator()(std::string_view input) const
     {
-        begin_parse(input)
+        std::optional<ParsedIdentifier> parsed_identifier;
+        std::optional<std::vector<ParsedConstructor>> parsed_constructors;
+
+        return begin_parse(input)
             .and_then(immediate<parse_keyword_inductive>)
             .and_then(next<parse_identifier>)
-            .and_then(next<parse_keyword_where>);
-        return std::unexpected("how");
+            .and_then(effect([&parsed_identifier](ParsedIdentifier p) { parsed_identifier = p; }))
+            .and_then(next<parse_keyword_where>)
+            .and_then(next<zero_or_more<parse_constructor>>)
+            .and_then(effect([&parsed_constructors](ParsedZeroOrMore<ParsedConstructor> p) { parsed_constructors = p.value; }))
+            .transform([parsed_identifier, &parsed_constructors](Parsed auto&& p)
+            {
+                    return ParsedInductiveType{.identifier=*parsed_identifier, .constructors=*parsed_constructors, .remainder=p.remainder};
+            });
     }
 };
 
@@ -807,6 +853,12 @@ void print_parsed(Parsed auto&& parsed)
     else if constexpr (std::is_same_v<T, ParsedInductiveType>)
     {
         std::cout << "ParsedInductiveType" << "\n";
+        std::cout << "Name: " << parsed.identifier.identifier << "\n";
+        for (size_t i = 0; i < parsed.constructors.size(); i++)
+        {
+            std::cout << "Constructor #" << i << "\n";
+            print_parsed(parsed.constructors[i]);
+        }
     }
     else if constexpr (is_parsed_zero_or_more_v<T>)
     {
@@ -826,6 +878,12 @@ void print_parsed(Parsed auto&& parsed)
                 std::cout << arg.type << "\n";
                 std::cout << arg.value << "\n";
         }, parsed.value);
+    }
+    else if constexpr (std::is_same_v<T, ParsedConstructor>)
+    {
+        std::cout << "ParsedConstructor\n";
+        std::cout << "Identifier: " << parsed.identifier.identifier << "\n";
+        std::cout << "Type: " << parsed.type.name << "\n";
     }
     else
         static_assert(false, "UNREACHABLE");

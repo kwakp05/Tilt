@@ -58,7 +58,7 @@ constexpr bool is_identifier(char c)
 
 constexpr bool is_control(char c)
 {
-    return c == '-' || c == '>' || c == ':' || c == '=';
+    return c == '-' || c == '>' || c == ':' || c == '=' || c == '|';
 }
 
 std::string_view consume_whitespace(std::string_view input)
@@ -74,6 +74,16 @@ std::string_view consume_whitespace(std::string_view input)
             break;
     }
     return input.substr(i);
+}
+
+struct ParsedDummy
+{
+    std::string_view remainder;
+};
+
+std::expected<ParsedDummy, ParseError> begin_parse(std::string_view input)
+{
+    return ParsedDummy{ .remainder = input };
 }
 
 namespace
@@ -199,7 +209,8 @@ struct zero_or_more
         auto parser = P{};
         while (true)
         {
-            auto res = parser(input)
+            auto res = begin_parse(input)
+                .and_then(next<P>)
                 .transform([&value, &input](ParsedSubType p)
                 {
                         value.push_back(p);
