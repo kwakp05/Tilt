@@ -3,24 +3,9 @@
 #include <type_traits>
 #include <variant>
 
+#include "Parsed.h"
 #include "StringLiteral.h"
 #include "VariantUtils.h"
-
-using ParseError = std::string;
-
-template <typename T>
-concept Parsed = requires (T a)
-{
-    { a.remainder } -> std::same_as<std::string_view&>;
-};
-
-template <typename T>
-concept ParseResult = std::same_as<T, std::expected<typename T::value_type, typename T::error_type>>
-    && Parsed<typename T::value_type>
-    && std::same_as<typename T::error_type, ParseError>;
-
-template <typename T>
-concept Parser = std::invocable<T, std::string_view> && ParseResult<std::invoke_result_t<T, std::string_view>>;
 
 template <Parser P>
 struct get_parser_value
@@ -31,37 +16,37 @@ struct get_parser_value
 template <Parser P>
 using get_parser_value_t = get_parser_value<P>::type;
 
-constexpr bool is_whitespace(char c)
+inline constexpr bool is_whitespace(char c)
 {
     return c == ' ' || c == '\n';
 }
 
-constexpr bool is_crlf(char c1, char c2)
+inline constexpr bool is_crlf(char c1, char c2)
 {
     return c1 == '\r' && c2 == '\n';
 }
 
-constexpr bool is_alpha(char c)
+inline constexpr bool is_alpha(char c)
 {
     return c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z';
 }
 
-constexpr bool is_digit(char c)
+inline constexpr bool is_digit(char c)
 {
     return c >= '0' && c <= '9';
 }
 
-constexpr bool is_identifier(char c)
+inline constexpr bool is_identifier(char c)
 {
     return is_alpha(c) || is_digit(c) || c == '_';
 }
 
-constexpr bool is_control(char c)
+inline constexpr bool is_control(char c)
 {
     return c == '-' || c == '>' || c == ':' || c == '=' || c == '|';
 }
 
-std::string_view consume_whitespace(std::string_view input)
+inline std::string_view consume_whitespace(std::string_view input)
 {
     std::size_t i = 0;
     while (true)
@@ -81,7 +66,7 @@ struct ParsedDummy
     std::string_view remainder;
 };
 
-std::expected<ParsedDummy, ParseError> begin_parse(std::string_view input)
+inline std::expected<ParsedDummy, ParseError> begin_parse(std::string_view input)
 {
     return ParsedDummy{ .remainder = input };
 }
@@ -102,7 +87,7 @@ std::string_view next_token_impl(std::string_view input, auto&& filter)
 }
 }
 
-std::string_view next_token(std::string_view input)
+inline std::string_view next_token(std::string_view input)
 {
     input = consume_whitespace(input);
     if (input.empty())

@@ -128,9 +128,14 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClCompile Include="Engine.cpp" />
+    <ClCompile Include="Parser.cpp" />
     <ClCompile Include="Tilt.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="Engine.h" />
+    <ClInclude Include="Parsed.h" />
+    <ClInclude Include="Parser.h" />
     <ClInclude Include="ParserUtils.h" />
     <ClInclude Include="StringLiteral.h" />
     <ClInclude Include="VariantUtils.h" />
