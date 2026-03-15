@@ -66,6 +66,13 @@ struct ParsedEvalCommand
     std::string_view remainder;
 };
 
+struct ParsedCommandName
+{
+    std::variant<ParsedCheckCommand, ParsedEvalCommand> value;
+    std::string_view remainder;
+
+};
+
 struct ParsedType
 {
     std::string_view name;
@@ -101,7 +108,11 @@ struct ParsedFunctionOperator
     std::string_view remainder;
 };
 
-using ParsedOperator = std::variant<ParsedFunctionOperator>;
+struct ParsedOperator
+{
+    std::variant<ParsedFunctionOperator> value;
+    std::string_view remainder;
+};
 
 struct ParsedOpenParen
 {
@@ -130,40 +141,40 @@ struct ParsedAssignment
 
 struct ParsedKeywordDef
 {
-    std::string_view identifier;
     std::string_view remainder;
 };
 
 struct ParsedKeywordAxiom
 {
-    std::string_view identifier;
     std::string_view remainder;
 };
 
 struct ParsedKeywordTheorem
 {
-    std::string_view identifier;
     std::string_view remainder;
 };
 
 struct ParsedKeywordInductive
 {
-    std::string_view identifier;
     std::string_view remainder;
 };
 
 struct ParsedKeywordWhere
 {
+    std::string_view remainder;
+};
+
+struct ParsedKeyword
+{
+    std::variant<ParsedKeywordDef, ParsedKeywordAxiom, ParsedKeywordTheorem, ParsedKeywordInductive, ParsedKeywordWhere> value;
     std::string_view identifier;
     std::string_view remainder;
 };
 
-using ParsedKeyword = std::variant<ParsedKeywordDef, ParsedKeywordAxiom, ParsedKeywordTheorem, ParsedKeywordInductive, ParsedKeywordWhere>;
-
 struct ParsedExpression
 {
     std::string_view remainder;
-    std::vector<combine_variants_t<std::variant<ParsedIdentifier, ParsedOpenParen, ParsedClosedParen, ParsedColon>, ParsedOperator>> tokens;
+    std::vector<std::variant<ParsedIdentifier, ParsedOpenParen, ParsedClosedParen, ParsedColon, ParsedOperator>> tokens;
 };
 
 struct ParsedTheorem
@@ -243,11 +254,11 @@ struct parse_operator
     std::expected<ParsedOperator, ParseError> operator()(std::string_view input) const
     {
         return begin_parse(input)
-            .and_then(immediate <parse_control>)
+            .and_then(immediate<parse_control>)
             .and_then([](ParsedControl p) -> std::expected<ParsedOperator, ParseError>
             {
                     if (p.control == "->")
-                        return ParsedFunctionOperator{ .remainder = p.remainder };
+                        return ParsedOperator{ .value = ParsedFunctionOperator{.remainder = p.remainder}, .remainder = p.remainder };
                     return std::unexpected("Invalid operator: " + std::string{ p.control });
             });
     }
@@ -294,17 +305,19 @@ struct parse_colon
 
 struct parse_command_name
 {
-    std::expected<std::variant<ParsedCheckCommand, ParsedEvalCommand>, ParseError> operator()(std::string_view input) const
+    std::expected<ParsedCommandName, ParseError> operator()(std::string_view input) const
     {
-        return parse_identifier{}(input).and_then([](ParsedIdentifier x) -> std::expected<std::variant<ParsedCheckCommand, ParsedEvalCommand>, ParseError>
-        {
-                if (x.identifier == "check")
-                    return ParsedCheckCommand{ .remainder = x.remainder };
-                else if (x.identifier == "eval")
-                    return ParsedEvalCommand{ .remainder = x.remainder };
-                else
-                    return std::unexpected("Invalid command: " + std::string(x.identifier));
-        });
+        return begin_parse(input)
+            .and_then(immediate<parse_identifier>)
+            .and_then([](ParsedIdentifier x) -> std::expected<ParsedCommandName, ParseError>
+            {
+                    if (x.identifier == "check")
+                        return ParsedCommandName{ .value = ParsedCheckCommand{.remainder = x.remainder }, .remainder=x.remainder };
+                    else if (x.identifier == "eval")
+                        return ParsedCommandName{ .value = ParsedEvalCommand{.remainder = x.remainder }, .remainder=x.remainder};
+                    else
+                        return std::unexpected("Invalid command: " + std::string(x.identifier));
+            });
     }
 };
 
@@ -356,10 +369,10 @@ struct parse_expression
                     {
                         auto res = begin_parse(input)
                             .and_then(next<any<"Expected term", parse_identifier, parse_open_paren>>)
-                            .transform([&input, &result](std::variant<ParsedIdentifier, ParsedOpenParen> x)
-                                {
+                            .transform([&input, &result](Parsed auto&& x)
+                            {
                                     return std::visit([&input, &result](Parsed auto&& p) -> StateType
-                                        {
+                                    {
                                             using T = std::remove_cvref_t<decltype(p)>;
 
                                             result.tokens.push_back(p);
@@ -372,12 +385,12 @@ struct parse_expression
                                             else
                                                 static_assert(false, "UNREACHABLE");
 
-                                        }, x);
-                                })
+                                    }, x.value);
+                            })
                             .transform_error([](ParseError e)
-                                {
+                            {
                                     return error_state{ e };
-                                });
+                            });
 
                         if (res)
                             return res.value();
@@ -387,7 +400,7 @@ struct parse_expression
                     {
                         auto res = begin_parse(input)
                             .and_then(next<any<"Expected operator or identifier", parse_operator, parse_identifier, parse_colon, parse_closed_paren>>)
-                            .transform(effect([&input, &result](auto&& parsed_variant) -> StateType
+                            .transform(effect([&input, &result](Parsed auto&& parsed_any) -> StateType
                                 {
                                     return std::visit([&input, &result](Parsed auto&& parsed) -> StateType
                                         {
@@ -400,7 +413,7 @@ struct parse_expression
                                                 return full_state{};
                                             else
                                                 return partial_state{};
-                                    }, parsed_variant);
+                                    }, parsed_any.value);
                             }));
 
                         return res.value_or(done_state{});
@@ -512,17 +525,30 @@ struct parse_keyword
             .and_then(immediate<parse_identifier>)
             .and_then([](ParsedIdentifier p) -> std::expected<ParsedKeyword, ParseError>
             {
+                    auto helper = [rem=p.remainder]<Parsed P>()
+                    {
+                        return P{ .remainder = rem };
+                    };
+
+                    using KeywordVariant = decltype(ParsedKeyword::value);
+                    std::optional<KeywordVariant> val;
                     if (p.identifier == "def")
-                        return ParsedKeywordDef{.identifier=p.identifier, .remainder=p.remainder};
+                        val = helper.operator()<ParsedKeywordDef>();
                     else if (p.identifier == "axiom")
-                        return ParsedKeywordAxiom{.identifier=p.identifier, .remainder=p.remainder};
+                        val = helper.operator()<ParsedKeywordAxiom>();
                     else if (p.identifier == "theorem")
-                        return ParsedKeywordTheorem{.identifier=p.identifier, .remainder=p.remainder};
+                        val = helper.operator()<ParsedKeywordTheorem>();
                     else if (p.identifier == "inductive")
-                        return ParsedKeywordInductive{.identifier=p.identifier, .remainder=p.remainder};
+                        val = helper.operator()<ParsedKeywordInductive>();
                     else if (p.identifier == "where")
-                        return ParsedKeywordInductive{.identifier=p.identifier, .remainder=p.remainder};
-                    return std::unexpected("unexpected identifier: " + std::string{ p.identifier } + ". Expected keyword");
+                        val = helper.operator()<ParsedKeywordWhere>();
+
+                    return val
+                        .transform([p](KeywordVariant v) -> std::expected<ParsedKeyword, ParseError>
+                        {
+                                return ParsedKeyword{.value=v, .identifier=p.identifier, .remainder=p.remainder};
+                        })
+                        .value_or(std::unexpected("unexpected identifier: " + std::string{ p.identifier } + ". Expected keyword"));
             });
     }
 };
@@ -535,13 +561,13 @@ struct parse_keyword_def
             .and_then(immediate<parse_keyword>)
             .and_then([](ParsedKeyword p)
             {
-                    return std::visit([](Parsed auto&& keyword) -> std::expected<ParsedKeywordDef, ParseError>
+                    return std::visit([identifier=p.identifier](Parsed auto&& keyword) -> std::expected<ParsedKeywordDef, ParseError>
                     {
                             using T = std::remove_cvref_t<decltype(keyword)>;
                             if constexpr (std::is_same_v<T, ParsedKeywordDef>)
                                 return keyword;
-                            return std::unexpected("unexpected keyword: " + std::string{ keyword.identifier } + ". Expected def");
-                    }, p);
+                            return std::unexpected("unexpected keyword: " + std::string{ identifier } + ". Expected def");
+                    }, p.value);
             });
     }
 };
@@ -554,13 +580,13 @@ struct parse_keyword_axiom
             .and_then(immediate<parse_keyword>)
             .and_then([](ParsedKeyword p)
             {
-                    return std::visit([](Parsed auto&& keyword) -> std::expected<ParsedKeywordAxiom, ParseError>
+                    return std::visit([identifier=p.identifier](Parsed auto&& keyword) -> std::expected<ParsedKeywordAxiom, ParseError>
                     {
                             using T = std::remove_cvref_t<decltype(keyword)>;
                             if constexpr (std::is_same_v<T, ParsedKeywordAxiom>)
                                 return keyword;
-                            return std::unexpected("unexpected keyword: " + std::string{ keyword.identifier } + ". Expected def");
-                    }, p);
+                            return std::unexpected("unexpected keyword: " + std::string{ identifier } + ". Expected def");
+                    }, p.value);
             });
     }
 };
@@ -573,13 +599,13 @@ struct parse_keyword_theorem
             .and_then(immediate<parse_keyword>)
             .and_then([](ParsedKeyword p)
             {
-                    return std::visit([](Parsed auto&& keyword) -> std::expected<ParsedKeywordTheorem, ParseError>
+                    return std::visit([identifier=p.identifier](Parsed auto&& keyword) -> std::expected<ParsedKeywordTheorem, ParseError>
                     {
                             using T = std::remove_cvref_t<decltype(keyword)>;
                             if constexpr (std::is_same_v<T, ParsedKeywordTheorem>)
                                 return keyword;
-                            return std::unexpected("unexpected keyword: " + std::string{ keyword.identifier } + ". Expected theorem");
-                    }, p);
+                            return std::unexpected("unexpected keyword: " + std::string{ identifier } + ". Expected theorem");
+                    }, p.value);
             });
     }
 };
@@ -592,13 +618,13 @@ struct parse_keyword_inductive
             .and_then(immediate<parse_keyword>)
             .and_then([](ParsedKeyword p)
             {
-                    return std::visit([](Parsed auto&& keyword) -> std::expected<ParsedKeywordInductive, ParseError>
+                    return std::visit([identifier=p.identifier](Parsed auto&& keyword) -> std::expected<ParsedKeywordInductive, ParseError>
                     {
                             using T = std::remove_cvref_t<decltype(keyword)>;
                             if constexpr (std::is_same_v<T, ParsedKeywordInductive>)
                                 return keyword;
-                            return std::unexpected("unexpected keyword: " + std::string{ keyword.identifier } + ". Expected inductive");
-                    }, p);
+                            return std::unexpected("unexpected keyword: " + std::string{ identifier } + ". Expected inductive");
+                    }, p.value);
             });
     }
 };
@@ -611,13 +637,13 @@ struct parse_keyword_where
             .and_then(immediate<parse_keyword>)
             .and_then([](ParsedKeyword p)
             {
-                    return std::visit([](Parsed auto&& keyword) -> std::expected<ParsedKeywordWhere, ParseError>
+                    return std::visit([identifier=p.identifier](Parsed auto&& keyword) -> std::expected<ParsedKeywordWhere, ParseError>
                     {
                             using T = std::remove_cvref_t<decltype(keyword)>;
                             if constexpr (std::is_same_v<T, ParsedKeywordWhere>)
                                 return keyword;
-                            return std::unexpected("unexpected keyword: " + std::string{ keyword.identifier } + ". Expected where");
-                    }, p);
+                            return std::unexpected("unexpected keyword: " + std::string{ identifier } + ". Expected where");
+                    }, p.value);
             });
     }
 };
@@ -799,6 +825,8 @@ constexpr std::string parsed_to_name()
         return "ParsedClosedParen";
     else if constexpr (std::is_same_v<T, ParsedColon>)
         return "ParsedColon";
+    else if constexpr (std::is_same_v<T, ParsedOperator>)
+        return "ParsedOperator";
     else
         static_assert(false, "UNREACHABLE");
 }
