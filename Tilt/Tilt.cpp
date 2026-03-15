@@ -981,19 +981,22 @@ int main()
             std::cout << "FAIL " << res.error() << "\n";
     }
 
-    std::string input7 = "inductive Weekday where\n"
-        "| sunday : Weekday\n"
-        "| monday : Weekday\n"
-        "| tuesday : Weekday\n"
-        "| wednesday : Weekday\n"
-        "| thursday : Weekday\n"
-        "| friday : Weekday\n"
-        "| saturday : Weekday\n";
-    std::cout << "\nPARSING INDUCTIVE TYPE " << input7 << "\n";
-    auto parsed_inductive_type = begin_parse(input7).and_then(immediate<parse_inductive_type>);
-    if (parsed_inductive_type)
-        print_parsed(parsed_inductive_type.value());
-    else
-        std::cout << "FAIL " << parsed_inductive_type.error() << "\n";
+    {
+        std::string input = "inductive Weekday where\n"
+            "| sunday : Weekday\n"
+            "| monday : Weekday\n"
+            "| tuesday : Weekday\n"
+            "| wednesday : Weekday\n"
+            "| thursday : Weekday\n"
+            "| friday : Weekday\n"
+            "| saturday : Weekday\n";
+        std::cout << "\nPARSING INDUCTIVE TYPE " << input << "\n";
+        auto parsed_inductive_type = begin_parse(input).and_then(immediate<parse_inductive_type>);
+        if (parsed_inductive_type)
+            print_parsed(parsed_inductive_type.value());
+        else
+            std::cout << "FAIL " << parsed_inductive_type.error() << "\n";
+
+    }
 
 }
