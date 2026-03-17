@@ -101,6 +101,12 @@ struct ParsedIdentifier
     std::string_view remainder;
 };
 
+struct ParsedHierarchicalIdentifier
+{
+    std::vector<ParsedIdentifier> components;
+    std::string_view remainder;
+};
+
 struct ParsedControl
 {
     std::string_view control;
@@ -134,6 +140,11 @@ struct ParsedHash
 };
 
 struct ParsedColon
+{
+    std::string_view remainder;
+};
+
+struct ParsedDot
 {
     std::string_view remainder;
 };

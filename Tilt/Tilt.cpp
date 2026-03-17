@@ -8,6 +8,7 @@
 #include <ranges>
 #include <string>
 #include <string_view>
+#include <tuple>
 #include <type_traits>
 #include <utility>
 #include <variant>
@@ -15,6 +16,7 @@
 
 #include "utf8.h"
 
+#include "Engine.h"
 #include "Parsed.h"
 #include "Parser.h"
 #include "ParserUtils.h"
@@ -85,6 +87,32 @@ void print_parsed(Parsed auto&& parsed)
         std::cout << "ParsedConstructor\n";
         std::cout << "Identifier: " << parsed.identifier.identifier << "\n";
         std::cout << "Type: " << parsed.type.name << "\n";
+    }
+    else if constexpr (std::is_same_v<T, ParsedHierarchicalIdentifier>)
+    {
+        std::cout << "ParsedHierarchicalIdentifier\n";
+        for (auto&& p : parsed.components)
+        {
+            std::cout << p.identifier << " ";
+        }
+        std::cout << "\n";
+    }
+    else if constexpr (is_parsed_compose_v<T>)
+    {
+        std::cout << "ParsedCompose\n";
+        std::apply([](auto&... parsed_args)
+            {
+                (..., print_parsed(parsed_args));
+            }, parsed.value);
+    }
+    else if constexpr (std::is_same_v<T, ParsedHash>)
+    {
+        std::cout << "ParsedHash\n";
+    }
+    else if constexpr (std::is_same_v<T, ParsedIdentifier>)
+    {
+        std::cout << "ParsedIdentifier\n";
+        std::cout << parsed.identifier << "\n";
     }
     else
         static_assert(false, "UNREACHABLE");
@@ -194,10 +222,33 @@ int main()
         std::cout << "\nPARSING INDUCTIVE TYPE " << input << "\n";
         auto parsed_inductive_type = begin_parse(input).and_then(immediate<parse_inductive_type>);
         if (parsed_inductive_type)
+        {
             print_parsed(parsed_inductive_type.value());
+            Engine engine;
+            engine.process(parsed_inductive_type.value());
+        }
         else
             std::cout << "FAIL " << parsed_inductive_type.error() << "\n";
 
     }
 
+    {
+        std::string input = "Weekday.sunday.monday";
+        std::cout << "\nPARSING HIERARCHICAL IDENTIFIER " << input << "\n";
+        auto parsed = begin_parse(input).and_then(immediate<parse_hierarchical_identifier>);
+        if (parsed)
+            print_parsed(parsed.value());
+        else
+            std::cout << "FAIL " << parsed.error() << "\n";
+    }
+
+    {
+        std::string input = "#check";
+        std::cout << "\nPARSING #check to test compose " << input << "\n";
+        auto parsed = begin_parse(input).and_then(immediate<compose<parse_hash, parse_identifier>>);
+        if (parsed)
+            print_parsed(parsed.value());
+        else
+            std::cout << "FAIL " << parsed.error() << "\n";
+    }
 }

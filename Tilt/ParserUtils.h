@@ -1,5 +1,6 @@
 #pragma once
 
+#include <tuple>
 #include <type_traits>
 #include <variant>
 
@@ -43,7 +44,7 @@ inline constexpr bool is_identifier(char c)
 
 inline constexpr bool is_control(char c)
 {
-    return c == '-' || c == '>' || c == ':' || c == '=' || c == '|';
+    return c == '-' || c == '>' || c == ':' || c == '=' || c == '|' || c == '.';
 }
 
 inline std::string_view consume_whitespace(std::string_view input)
@@ -59,6 +60,23 @@ inline std::string_view consume_whitespace(std::string_view input)
             break;
     }
     return input.substr(i);
+}
+
+template <class Func>
+inline auto effect(Func const& func)
+{
+    return [&func](auto x) {
+        if constexpr (std::is_void_v<std::invoke_result_t<Func, decltype(x)>>)
+        {
+            func(x);
+            return std::expected<decltype(x), ParseError>{x};
+        }
+        else
+        {
+            auto output = func(x);
+            return output;
+        }
+    };
 }
 
 struct ParsedDummy
@@ -209,3 +227,65 @@ struct zero_or_more
         return ParsedType{ .value = std::move(value), .remainder = input };
     }
 };
+
+template <Parsed... P>
+struct ParsedCompose
+{
+    std::tuple<P...> value;
+    std::string_view remainder;
+};
+
+template <Parser... Parsers>
+struct compose
+{
+    using ParsedType = ParsedCompose<get_parser_value_t<Parsers>...>;
+    using ReturnType = std::expected<ParsedType, ParseError>;
+
+    ReturnType operator()(std::string_view input) const
+    {
+        std::tuple<std::optional<get_parser_value_t<Parsers>>...> tup;
+        std::optional<ParseError> error;
+
+        auto apply_parser = [&input, &tup, &error]<Parser P>()
+        {
+            auto res = begin_parse(input)
+                .and_then(immediate<P>)
+                .and_then(effect([&input, &tup](Parsed auto&& parsed)
+                {
+                        input = parsed.remainder;
+                        std::get<std::optional<get_parser_value_t<P>>>(tup) = parsed;
+                }))
+                .transform_error([&error](ParseError e)
+                {
+                        error = e;
+                        return e;
+                });
+
+            return res.has_value();
+        };
+
+        if ((... && apply_parser.template operator()<Parsers>()))
+        {
+            return ParsedType{
+                .value = std::apply([](auto const&... parsed_args)
+                    {
+                        return std::make_tuple((*parsed_args)...);
+
+                    }, tup),
+                .remainder = input
+            };
+        }
+
+        return std::unexpected(*error);
+    }
+};
+
+template<class T>
+struct is_parsed_compose : std::false_type {};
+
+template<class... Ts>
+struct is_parsed_compose<ParsedCompose<Ts...>> : std::true_type {};
+
+template<class T>
+constexpr bool is_parsed_compose_v = is_parsed_compose<T>::value;
+

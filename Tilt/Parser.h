@@ -4,32 +4,18 @@
 #include <string>
 #include <string_view>
 #include <type_traits>
-#include <variant>
-#include <vector>
 
 #include "Parsed.h"
 #include "ParserUtils.h"
 
-template <class Func>
-inline auto effect(Func const& func)
-{
-    return [&func](auto x) {
-        if constexpr (std::is_void_v<std::invoke_result_t<Func, decltype(x)>>)
-        {
-            func(x);
-            return std::expected<decltype(x), ParseError>{x};
-        }
-        else
-        {
-            auto output = func(x);
-            return output;
-        }
-    };
-}
-
 struct parse_identifier
 {
     std::expected<ParsedIdentifier, ParseError> operator()(std::string_view input) const;
+};
+
+struct parse_hierarchical_identifier
+{
+    std::expected<ParsedHierarchicalIdentifier, ParseError> operator()(std::string_view input) const;
 };
 
 struct parse_control
@@ -55,6 +41,11 @@ struct parse_closed_paren
 struct parse_colon
 {
     std::expected<ParsedColon, ParseError> operator()(std::string_view input) const;
+};
+
+struct parse_dot
+{
+    std::expected<ParsedDot, ParseError> operator()(std::string_view input) const;
 };
 
 struct parse_vertical_bar

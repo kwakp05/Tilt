@@ -1,5 +1,9 @@
 #include "Parser.h"
 
+#include <tuple>
+#include <vector>
+#include <variant>
+
 std::expected<ParsedIdentifier, ParseError> parse_identifier::operator()(std::string_view input) const
 {
     auto it = std::find_if_not(input.begin(), input.end(), is_identifier);
@@ -14,6 +18,31 @@ std::expected<ParsedIdentifier, ParseError> parse_identifier::operator()(std::st
     return std::unexpected("Invalid identifier: " + std::string{ input.substr(0, 1) });
 }
 
+std::expected<ParsedHierarchicalIdentifier, ParseError> parse_hierarchical_identifier::operator()(std::string_view input) const
+{
+    std::optional<ParsedIdentifier> first_identifier;
+    return begin_parse(input)
+        .and_then(immediate<parse_identifier>)
+        .and_then(effect([&first_identifier](ParsedIdentifier parsed) { first_identifier = parsed; }))
+        .and_then(immediate<zero_or_more<compose<parse_dot, parse_identifier>>>)
+        .and_then([](Parsed auto&& parsed) -> std::expected<std::remove_cvref_t<decltype(parsed)>, ParseError>
+        {
+                // If there is a trailing dot with no identifier component, return error
+                if (begin_parse(parsed.remainder).and_then(immediate<parse_dot>))
+                    return std::unexpected("Invalid field notation : Identifier or numeral expected after '.'");
+                return parsed;
+        })
+        .transform([first_identifier](Parsed auto&& parsed)
+        {
+                std::vector<ParsedIdentifier> components;
+                components.push_back(*first_identifier);
+                for (ParsedCompose<ParsedDot, ParsedIdentifier> parsed_compose : parsed.value)
+                {
+                    components.push_back(std::get<ParsedIdentifier>(parsed_compose.value));
+                }
+                return ParsedHierarchicalIdentifier{.components=std::move(components), .remainder = parsed.remainder};
+        });
+}
 
 std::expected<ParsedControl, ParseError> parse_control::operator()(std::string_view input) const
 {
@@ -68,6 +97,18 @@ std::expected<ParsedColon, ParseError> parse_colon::operator()(std::string_view 
                 if (p.control == ":")
                     return ParsedColon{ .remainder = p.remainder };
                 return std::unexpected("Expected ':' but got " + std::string{ p.control });
+        });
+}
+
+std::expected<ParsedDot, ParseError> parse_dot::operator()(std::string_view input) const
+{
+    return begin_parse(input)
+        .and_then(immediate<parse_control>)
+        .and_then([](ParsedControl p) -> std::expected<ParsedDot, ParseError>
+        {
+                if (p.control == ".")
+                    return ParsedDot{ .remainder = p.remainder };
+                return std::unexpected("Expected '.' but got " + std::string{ p.control });
         });
 }
 
