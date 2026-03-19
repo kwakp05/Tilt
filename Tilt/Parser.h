@@ -8,6 +8,11 @@
 #include "Parsed.h"
 #include "ParserUtils.h"
 
+struct parse_raw_identifier
+{
+    std::expected<ParsedRawIdentifier, ParseError> operator()(std::string_view input) const;
+};
+
 struct parse_identifier
 {
     std::expected<ParsedIdentifier, ParseError> operator()(std::string_view input) const;
@@ -86,11 +91,6 @@ struct parse_nat_literal
 struct parse_bool_literal
 {
     std::expected<ParsedBoolLiteral, ParseError> operator()(std::string_view input) const;
-};
-
-struct parse_keyword
-{
-    std::expected<ParsedKeyword, ParseError> operator()(std::string_view input) const;
 };
 
 struct parse_keyword_def

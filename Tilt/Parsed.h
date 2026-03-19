@@ -95,6 +95,12 @@ struct ParsedBoolLiteral
     std::string_view remainder;
 };
 
+struct ParsedRawIdentifier
+{
+    std::string_view identifier;
+    std::string_view remainder;
+};
+
 struct ParsedIdentifier
 {
     std::string_view identifier;
@@ -215,13 +221,14 @@ struct ParsedAxiom
 struct ParsedConstructor
 {
     ParsedIdentifier identifier;
-    ParsedType type;
+    ParsedExpression type;
     std::string_view remainder;
 };
 
 struct ParsedInductiveType
 {
     ParsedIdentifier identifier;
+    ParsedExpression type;
     std::vector<ParsedConstructor> constructors;
     std::string_view remainder;
 };

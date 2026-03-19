@@ -57,6 +57,8 @@ void print_parsed(Parsed auto&& parsed)
     {
         std::cout << "ParsedInductiveType" << "\n";
         std::cout << "Name: " << parsed.identifier.identifier << "\n";
+        std::cout << "Type:\n";
+        print_parsed(parsed.type);
         for (size_t i = 0; i < parsed.constructors.size(); i++)
         {
             std::cout << "Constructor #" << i << "\n";
@@ -86,7 +88,8 @@ void print_parsed(Parsed auto&& parsed)
     {
         std::cout << "ParsedConstructor\n";
         std::cout << "Identifier: " << parsed.identifier.identifier << "\n";
-        std::cout << "Type: " << parsed.type.name << "\n";
+        std::cout << "Type:\n";
+        print_parsed(parsed.type);
     }
     else if constexpr (std::is_same_v<T, ParsedHierarchicalIdentifier>)
     {
@@ -211,7 +214,7 @@ int main()
     }
 
     {
-        std::string input = "inductive Weekday where\n"
+        std::string input = "inductive Weekday : Type 0 where\n"
             "| sunday : Weekday\n"
             "| monday : Weekday\n"
             "| tuesday : Weekday\n"
@@ -229,7 +232,6 @@ int main()
         }
         else
             std::cout << "FAIL " << parsed_inductive_type.error() << "\n";
-
     }
 
     {
@@ -250,5 +252,21 @@ int main()
             print_parsed(parsed.value());
         else
             std::cout << "FAIL " << parsed.error() << "\n";
+    }
+
+    {
+        std::string input = "inductive MyNat : Type 0 where\n"
+            "| zero : MyNat\n"
+            "| succ : (n : MyNat) -> MyNat\n";
+        std::cout << "\nPARSING INDUCTIVE TYPE " << input << "\n";
+        auto parsed_inductive_type = begin_parse(input).and_then(immediate<parse_inductive_type>);
+        if (parsed_inductive_type)
+        {
+            print_parsed(parsed_inductive_type.value());
+            Engine engine;
+            engine.process(parsed_inductive_type.value());
+        }
+        else
+            std::cout << "FAIL " << parsed_inductive_type.error() << "\n";
     }
 }
