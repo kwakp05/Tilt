@@ -48,6 +48,7 @@ std::expected<ParsedHierarchicalIdentifier, ParseError> parse_hierarchical_ident
         .transform([first_identifier](Parsed auto&& parsed)
         {
                 std::vector<ParsedIdentifier> components;
+                components.reserve(parsed.value.size() + 1);
                 components.push_back(*first_identifier);
                 for (ParsedCompose<ParsedDot, ParsedIdentifier> parsed_compose : parsed.value)
                 {
@@ -68,16 +69,27 @@ std::expected<ParsedControl, ParseError> parse_control::operator()(std::string_v
 }
 
 
-std::expected<ParsedOperator, ParseError> parse_operator::operator()(std::string_view input) const
+namespace
+{
+template <Parsed P, StringLiteral Operator>
+std::expected<P, ParseError> parse_operator_helper(std::string_view input)
 {
     return begin_parse(input)
         .and_then(immediate<parse_control>)
-        .and_then([](ParsedControl p) -> std::expected<ParsedOperator, ParseError>
+        .transform_error([](ParseError const& e) {return e + " Expected operator '" + Operator.value + "'"; })
+        .and_then([](ParsedControl p) -> std::expected<P, ParseError>
         {
-                if (p.control == "->")
-                    return ParsedOperator{ .value = ParsedFunctionOperator{.remainder = p.remainder}, .remainder = p.remainder };
-                return std::unexpected("Invalid operator: " + std::string{ p.control });
+                if (p.control == Operator.value)
+                    return P{ .remainder = p.remainder };
+                return std::unexpected("unexpected token: '" + std::string{ p.control } + "'. Expected operator '" + Operator.value + "'");
         });
+}
+}
+
+
+std::expected<ParsedOperatorFunction, ParseError> parse_operator_function::operator()(std::string_view input) const
+{
+    return parse_operator_helper<ParsedOperatorFunction, "->">(input);
 }
 
 
@@ -139,27 +151,16 @@ std::expected<ParsedVerticalBar, ParseError> parse_vertical_bar::operator()(std:
 }
 
 
-std::expected<ParsedCommandName, ParseError> parse_command_name::operator()(std::string_view input) const
-{
-    return begin_parse(input)
-        .and_then(immediate<parse_identifier>)
-        .and_then([](ParsedIdentifier x) -> std::expected<ParsedCommandName, ParseError>
-        {
-                if (x.identifier == "check")
-                    return ParsedCommandName{ .value = ParsedCheckCommand{.remainder = x.remainder }, .remainder=x.remainder };
-                else if (x.identifier == "eval")
-                    return ParsedCommandName{ .value = ParsedEvalCommand{.remainder = x.remainder }, .remainder=x.remainder};
-                else
-                    return std::unexpected("Invalid command: " + std::string(x.identifier));
-        });
-}
-
-
 std::expected<ParsedExpression, ParseError> parse_expression::operator()(std::string_view input) const
 {
     ParsedExpression result;
 
     /*
+    * Things that can be in an expression:
+    * (dependent) function ((ident : term) -> term)
+    * function abstraction (fun (ident : term) => term)
+    * function application (term term)
+    *
     * Expression parsing starts in partial_state.
     *
     * partial_state = Incomplete parse, expect identifier
@@ -168,14 +169,16 @@ std::expected<ParsedExpression, ParseError> parse_expression::operator()(std::st
     * done_state = Terminate with success. Input forms a valid expression
     *
     * partial_state + identifier => full_state
-    * partial_state + operator => error_state
+    * partial_state + '->' => error_state
+    * partial_state + '=>' => error_state
     * partial_state + '(' => partial_state
     * partial_state + ')' => error_state
     * partial_state + ':' => error_state
     * partial_state + * => error_state
     *
     * full_state + identifier => full_state
-    * full_state + operator => partial_state
+    * full_state + '->' => partial_state
+    * full_state + '=>' => partial_state
     * full_state + '(' => partial_state
     * full_state + ')' => full_state
     * full_state + ':' => partial_state
@@ -200,7 +203,7 @@ std::expected<ParsedExpression, ParseError> parse_expression::operator()(std::st
                 if constexpr (std::is_same_v<T, partial_state>)
                 {
                     auto res = begin_parse(input)
-                        .and_then(next<any<"Expected term", parse_identifier, parse_open_paren>>)
+                        .and_then(next<any<"Expected term", parse_hierarchical_identifier, parse_open_paren>>)
                         .transform([&input, &result](Parsed auto&& x)
                         {
                                 return std::visit([&input, &result](Parsed auto&& p) -> StateType
@@ -210,7 +213,7 @@ std::expected<ParsedExpression, ParseError> parse_expression::operator()(std::st
                                         result.tokens.push_back(p);
                                         input = result.remainder = p.remainder;
 
-                                        if constexpr (std::is_same_v<T, ParsedIdentifier>)
+                                        if constexpr (std::is_same_v<T, ParsedHierarchicalIdentifier>)
                                             return full_state{};
                                         else if constexpr (std::is_same_v<T, ParsedOpenParen>)
                                             return partial_state{};
@@ -231,22 +234,22 @@ std::expected<ParsedExpression, ParseError> parse_expression::operator()(std::st
                 else if constexpr (std::is_same_v<T, full_state>)
                 {
                     auto res = begin_parse(input)
-                        .and_then(next<any<"Expected operator or identifier", parse_operator, parse_identifier, parse_colon, parse_closed_paren>>)
-                        .transform(effect([&input, &result](Parsed auto&& parsed_any) -> StateType
-                            {
+                        .and_then(next<any<"Expected operator or identifier", parse_operator_function, parse_hierarchical_identifier, parse_colon, parse_closed_paren>>)
+                        .transform([&input, &result](Parsed auto&& parsed_any) -> StateType
+                        {
                                 return std::visit([&input, &result](Parsed auto&& parsed) -> StateType
-                                    {
+                                {
                                         using T = std::remove_cvref_t<decltype(parsed)>;
 
                                         result.tokens.push_back(parsed);
                                         input = result.remainder = parsed.remainder;
 
-                                        if constexpr (std::is_same_v<T, ParsedIdentifier> || std::is_same_v<T, ParsedClosedParen>)
+                                        if constexpr (std::is_same_v<T, ParsedHierarchicalIdentifier> || std::is_same_v<T, ParsedClosedParen>)
                                             return full_state{};
                                         else
                                             return partial_state{};
                                 }, parsed_any.value);
-                        }));
+                        });
 
                     return res.value_or(done_state{});
                 }
@@ -356,6 +359,12 @@ std::expected<P, ParseError> parse_keyword_helper(std::string_view input)
 }
 
 
+std::expected<ParsedKeywordCheck, ParseError> parse_keyword_check::operator()(std::string_view input) const
+{
+    return parse_keyword_helper<ParsedKeywordCheck, "check">(input);
+}
+
+
 std::expected<ParsedKeywordDef, ParseError> parse_keyword_def::operator()(std::string_view input) const
 {
     return parse_keyword_helper<ParsedKeywordDef, "def">(input);
@@ -438,15 +447,14 @@ std::expected<ParsedConstant, ParseError> parse_constant::operator()(std::string
     return result;
 }
 
-std::expected<Command, ParseError> parse_command(std::string_view input)
+
+std::expected<ParsedCheckCommand, ParseError> parse_check_command::operator()(std::string_view input) const
 {
-    std::string name;
-    std::string type;
-    auto result = begin_parse(input)
-        .and_then(next<parse_hash>)
-        .and_then(immediate<parse_command_name>)
-        .and_then(next<parse_expression>);
-    return std::unexpected("HI");
+    return begin_parse(input)
+        .and_then(immediate<parse_hash>)
+        .and_then(immediate<parse_keyword_check>)
+        .and_then(next<parse_expression>)
+        .transform([](ParsedExpression p) { return ParsedCheckCommand{ .expression = p, .remainder = p.remainder }; });
 }
 
 

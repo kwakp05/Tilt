@@ -24,6 +24,12 @@
     <ClCompile Include="Parser.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="Expression.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="InductiveType.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="ParserUtils.h">
@@ -42,6 +48,15 @@
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="Parser.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="Expression.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="InductiveType.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="EngineRunner.h">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>

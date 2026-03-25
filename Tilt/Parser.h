@@ -28,9 +28,9 @@ struct parse_control
     std::expected<ParsedControl, ParseError> operator()(std::string_view input) const;
 };
 
-struct parse_operator
+struct parse_operator_function
 {
-    std::expected<ParsedOperator, ParseError> operator()(std::string_view input) const;
+    std::expected<ParsedOperatorFunction, ParseError> operator()(std::string_view input) const;
 };
 
 struct parse_open_paren
@@ -56,11 +56,6 @@ struct parse_dot
 struct parse_vertical_bar
 {
     std::expected<ParsedVerticalBar, ParseError> operator()(std::string_view input) const;
-};
-
-struct parse_command_name
-{
-    std::expected<ParsedCommandName, ParseError> operator()(std::string_view input) const;
 };
 
 struct parse_expression
@@ -93,6 +88,11 @@ struct parse_bool_literal
     std::expected<ParsedBoolLiteral, ParseError> operator()(std::string_view input) const;
 };
 
+struct parse_keyword_check
+{
+    std::expected<ParsedKeywordCheck, ParseError> operator()(std::string_view input) const;
+};
+
 struct parse_keyword_def
 {
     std::expected<ParsedKeywordDef, ParseError> operator()(std::string_view input) const;
@@ -123,8 +123,6 @@ struct parse_constant
     std::expected<ParsedConstant, ParseError> operator()(std::string_view input) const;
 };
 
-std::expected<Command, ParseError> parse_command(std::string_view input);
-
 struct parse_axiom
 {
     std::expected<ParsedAxiom, ParseError> operator()(std::string_view input) const;
@@ -145,3 +143,7 @@ struct parse_inductive_type
     std::expected<ParsedInductiveType, ParseError> operator()(std::string_view input) const;
 };
 
+struct parse_check_command
+{
+    std::expected<ParsedCheckCommand, ParseError> operator()(std::string_view input) const;
+};

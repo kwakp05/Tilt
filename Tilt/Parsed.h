@@ -44,39 +44,6 @@ struct ParsedConstant
     std::string_view remainder;
 };
 
-struct Expression
-{
-};
-
-struct CheckCommand
-{
-    Expression expression;
-};
-
-struct EvalCommand
-{
-    Expression expression;
-};
-
-using Command = std::variant<CheckCommand, EvalCommand>;
-
-struct ParsedCheckCommand
-{
-    std::string_view remainder;
-};
-
-struct ParsedEvalCommand
-{
-    std::string_view remainder;
-};
-
-struct ParsedCommandName
-{
-    std::variant<ParsedCheckCommand, ParsedEvalCommand> value;
-    std::string_view remainder;
-
-};
-
 struct ParsedType
 {
     std::string_view name;
@@ -119,14 +86,8 @@ struct ParsedControl
     std::string_view remainder;
 };
 
-struct ParsedFunctionOperator
+struct ParsedOperatorFunction
 {
-    std::string_view remainder;
-};
-
-struct ParsedOperator
-{
-    std::variant<ParsedFunctionOperator> value;
     std::string_view remainder;
 };
 
@@ -165,6 +126,11 @@ struct ParsedAssignment
     std::string_view remainder;
 };
 
+struct ParsedKeywordCheck
+{
+    std::string_view remainder;
+};
+
 struct ParsedKeywordDef
 {
     std::string_view remainder;
@@ -190,17 +156,10 @@ struct ParsedKeywordWhere
     std::string_view remainder;
 };
 
-struct ParsedKeyword
-{
-    std::variant<ParsedKeywordDef, ParsedKeywordAxiom, ParsedKeywordTheorem, ParsedKeywordInductive, ParsedKeywordWhere> value;
-    std::string_view identifier;
-    std::string_view remainder;
-};
-
 struct ParsedExpression
 {
     std::string_view remainder;
-    std::vector<std::variant<ParsedIdentifier, ParsedOpenParen, ParsedClosedParen, ParsedColon, ParsedOperator>> tokens;
+    std::vector<std::variant<ParsedHierarchicalIdentifier, ParsedOpenParen, ParsedClosedParen, ParsedColon, ParsedOperatorFunction>> tokens;
 };
 
 struct ParsedTheorem
@@ -230,6 +189,18 @@ struct ParsedInductiveType
     ParsedIdentifier identifier;
     ParsedExpression type;
     std::vector<ParsedConstructor> constructors;
+    std::string_view remainder;
+};
+
+struct ParsedCheckCommand
+{
+    ParsedExpression expression;
+    std::string_view remainder;
+};
+
+struct ParsedEvalCommand
+{
+    ParsedExpression expression;
     std::string_view remainder;
 };
 

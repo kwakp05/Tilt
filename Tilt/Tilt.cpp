@@ -16,7 +16,7 @@
 
 #include "utf8.h"
 
-#include "Engine.h"
+#include "EngineRunner.h"
 #include "Parsed.h"
 #include "Parser.h"
 #include "ParserUtils.h"
@@ -117,6 +117,12 @@ void print_parsed(Parsed auto&& parsed)
         std::cout << "ParsedIdentifier\n";
         std::cout << parsed.identifier << "\n";
     }
+    else if constexpr (std::is_same_v<T, ParsedCheckCommand>)
+    {
+        std::cout << "ParsedCheckCommand\n";
+        std::cout << "Expression:\n";
+        print_parsed(parsed.expression);
+    }
     else
         static_assert(false, "UNREACHABLE");
 
@@ -130,8 +136,8 @@ constexpr std::string parsed_to_name()
 
     if constexpr (std::is_same_v<T, ParsedExpression>)
         return "ParsedExpression";
-    else if constexpr (std::is_same_v<T, ParsedFunctionOperator>)
-        return "ParsedFunctionOperator";
+    else if constexpr (std::is_same_v<T, ParsedOperatorFunction>)
+        return "ParsedOperatorFunction";
     else if constexpr (std::is_same_v<T, ParsedIdentifier>)
         return "ParsedIdentifier";
     else if constexpr (std::is_same_v<T, ParsedOpenParen>)
@@ -140,8 +146,8 @@ constexpr std::string parsed_to_name()
         return "ParsedClosedParen";
     else if constexpr (std::is_same_v<T, ParsedColon>)
         return "ParsedColon";
-    else if constexpr (std::is_same_v<T, ParsedOperator>)
-        return "ParsedOperator";
+    else if constexpr (std::is_same_v<T, ParsedHierarchicalIdentifier>)
+        return "ParsedHierarchicalIdentifier";
     else
         static_assert(false, "UNREACHABLE");
 }
@@ -164,8 +170,6 @@ int main()
     }
     else
         std::cout << "FAIL " << x.error() << "\n";
-
-    auto y = parse_command(input2);
 
     std::string input4 = "Nat -> List Nat -> Nat";
     std::cout << "\nPARSING EXPRESSION " << input4 << "\n";
@@ -255,6 +259,7 @@ int main()
     }
 
     {
+        SimpleEngineRunner engine;
         std::string input = "inductive MyNat : Type 0 where\n"
             "| zero : MyNat\n"
             "| succ : (n : MyNat) -> MyNat\n";
@@ -263,8 +268,18 @@ int main()
         if (parsed_inductive_type)
         {
             print_parsed(parsed_inductive_type.value());
-            Engine engine;
             engine.process(parsed_inductive_type.value());
+        }
+        else
+            std::cout << "FAIL " << parsed_inductive_type.error() << "\n";
+
+        input = "#check MyNat.zero";
+        std::cout << "\nPARSING " << input << "\n";
+        auto parsed_check_command = begin_parse(input).and_then(immediate<parse_check_command>);
+        if (parsed_check_command)
+        {
+            print_parsed(parsed_check_command.value());
+            engine.process(parsed_check_command.value());
         }
         else
             std::cout << "FAIL " << parsed_inductive_type.error() << "\n";
