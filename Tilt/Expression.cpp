@@ -5,6 +5,7 @@
 #include <ranges>
 #include <span>
 #include <string>
+#include <type_traits>
 #include <variant>
 
 #include "Expression.h"
@@ -104,11 +105,6 @@ std::expected<Expression, std::string> create_expression(std::span<ExpressionTok
             });
 }
 
-Expression get_type(Expression const& exp)
-{
-    return Expression{ Identifier{ {"TYPE"} } };
-}
-
 std::string to_pretty_string(Expression const& exp)
 {
     return std::visit([](auto&& x)
@@ -127,4 +123,35 @@ std::string to_pretty_string(Expression const& exp)
             else
                 static_assert(false, "UNREACHABLE");
     }, exp.value);
+}
+
+Expression clone(Expression const& exp)
+{
+    return std::visit([](auto&& x)
+        {
+            using T = std::remove_cvref_t<decltype(x)>;
+            if constexpr (std::is_same_v<T, Universe>)
+                return Expression{ x };
+            else if constexpr (std::is_same_v<T, Identifier>)
+                return Expression{ x };
+            else if constexpr (std::is_same_v<T, Function>)
+                return Expression{ Function{
+                    .param_name = x.param_name,
+                    .param_type = std::make_unique<Expression>(clone(*x.param_type)),
+                    .return_type = std::make_unique<Expression>(clone(*x.return_type)),
+                } };
+            else if constexpr (std::is_same_v<T, FunctionAbstraction>)
+                return Expression{ FunctionAbstraction{
+                    .param_name = x.param_name,
+                    .param_type = std::make_unique<Expression>(clone(*x.param_type)),
+                    .return_type = std::make_unique<Expression>(clone(*x.return_type)),
+                } };
+            else if constexpr (std::is_same_v<T, FunctionApplication>)
+                return Expression{ FunctionApplication{
+                    .function = std::make_unique<Expression>(clone(*x.function)),
+                    .argument = std::make_unique<Expression>(clone(*x.argument)),
+                } };
+            else
+                static_assert(false, "UNREACHABLE");
+        }, exp.value);
 }

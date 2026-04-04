@@ -55,6 +55,6 @@ struct Expression
 
 std::expected<Expression, std::string> create_expression(ParsedExpression p);
 std::expected<Expression, std::string> create_expression(std::span<ExpressionToken> tokens);
-Expression get_type(Expression const& p);
 std::string to_pretty_string(Expression const& p);
+Expression clone(Expression const& exp);
 
