@@ -1,6 +1,9 @@
 #include "Parser.h"
 #include "StringLiteral.h"
 
+#include <algorithm>
+#include <cctype>
+#include <string>
 #include <tuple>
 #include <vector>
 #include <variant>
@@ -27,7 +30,26 @@ std::expected<ParsedIdentifier, ParseError> parse_identifier::operator()(std::st
             {
                 if (p.identifier == "where")
                     return std::unexpected("Unexpected use of reserved word 'where'. Expected identifier.");
+                if (p.identifier == "Type")
+                    return std::unexpected("Unexpected use of reserved word 'Type'. Expected identifier.");
+                if (p.identifier == "Prop")
+                    return std::unexpected("Unexpected use of reserved word 'Prop'. Expected identifier.");
+                if (p.identifier == "Sort")
+                    return std::unexpected("Unexpected use of reserved word 'Sort'. Expected identifier.");
                 return ParsedIdentifier{ .identifier = p.identifier, .remainder = p.remainder };
+            });
+}
+
+std::expected<ParsedDigits, ParseError> parse_digits::operator()(std::string_view input) const
+{
+    return begin_parse(input)
+        .and_then(immediate<parse_raw_identifier>)
+        .and_then([](ParsedRawIdentifier p) -> std::expected<ParsedDigits, ParseError>
+            {
+                std::string s{ p.identifier };
+                if (!std::all_of(s.begin(), s.end(), [](char c) { return std::isdigit(c); }))
+                    return std::unexpected("Unexpected term '" + s + "'. Expected natural number.");
+                return ParsedDigits{ .digits = std::stoi(s), .remainder = p.remainder };
             });
 }
 
@@ -203,7 +225,13 @@ std::expected<ParsedExpression, ParseError> parse_expression::operator()(std::st
                 if constexpr (std::is_same_v<T, partial_state>)
                 {
                     auto res = begin_parse(input)
-                        .and_then(next<any<"Expected term", parse_hierarchical_identifier, parse_open_paren>>)
+                        .and_then(next<any<
+                            "Expected term",
+                            parse_hierarchical_identifier,
+                            parse_universe_type,
+                            parse_universe_prop,
+                            parse_universe_sort,
+                            parse_open_paren>>)
                         .transform([&input, &result](Parsed auto&& x)
                         {
                                 return std::visit([&input, &result](Parsed auto&& p) -> StateType
@@ -213,12 +241,10 @@ std::expected<ParsedExpression, ParseError> parse_expression::operator()(std::st
                                         result.tokens.push_back(p);
                                         input = result.remainder = p.remainder;
 
-                                        if constexpr (std::is_same_v<T, ParsedHierarchicalIdentifier>)
-                                            return full_state{};
-                                        else if constexpr (std::is_same_v<T, ParsedOpenParen>)
+                                        if constexpr (std::is_same_v<T, ParsedOpenParen>)
                                             return partial_state{};
                                         else
-                                            static_assert(false, "UNREACHABLE");
+                                            return full_state{};
 
                                 }, x.value);
                         })
@@ -234,7 +260,15 @@ std::expected<ParsedExpression, ParseError> parse_expression::operator()(std::st
                 else if constexpr (std::is_same_v<T, full_state>)
                 {
                     auto res = begin_parse(input)
-                        .and_then(next<any<"Expected operator or identifier", parse_operator_function, parse_hierarchical_identifier, parse_colon, parse_closed_paren>>)
+                        .and_then(next<any<
+                            "Expected operator or identifier",
+                            parse_operator_function,
+                            parse_hierarchical_identifier,
+                            parse_universe_type,
+                            parse_universe_prop,
+                            parse_universe_sort,
+                            parse_colon,
+                            parse_closed_paren>>)
                         .transform([&input, &result](Parsed auto&& parsed_any) -> StateType
                         {
                                 return std::visit([&input, &result](Parsed auto&& parsed) -> StateType
@@ -244,10 +278,10 @@ std::expected<ParsedExpression, ParseError> parse_expression::operator()(std::st
                                         result.tokens.push_back(parsed);
                                         input = result.remainder = parsed.remainder;
 
-                                        if constexpr (std::is_same_v<T, ParsedHierarchicalIdentifier> || std::is_same_v<T, ParsedClosedParen>)
-                                            return full_state{};
-                                        else
+                                        if constexpr (std::is_same_v<T, ParsedOperatorFunction> || std::is_same_v<T, ParsedColon>)
                                             return partial_state{};
+                                        else
+                                            return full_state{};
                                 }, parsed_any.value);
                         });
 
@@ -301,6 +335,38 @@ std::expected<ParsedAssignment, ParseError> parse_assignment::operator()(std::st
                     return ParsedAssignment{ .remainder = p.remainder };
                 return std::unexpected("Expected assignment. Got: " + std::string{ p.control });
         });
+}
+
+
+std::expected<ParsedUniverseType, ParseError> parse_universe_type::operator()(std::string_view input) const
+{
+    return begin_parse(input)
+        .and_then(immediate<parse_keyword_type>)
+        .and_then(next<parse_digits>)
+        .transform([](ParsedDigits p)
+            {
+                return ParsedUniverseType{ .level = p.digits, .remainder = p.remainder };
+            });
+}
+
+
+std::expected<ParsedUniverseProp, ParseError> parse_universe_prop::operator()(std::string_view input) const
+{
+    return begin_parse(input)
+        .and_then(immediate<parse_keyword_prop>)
+        .transform([](ParsedKeywordProp p) { return ParsedUniverseProp{ .remainder = p.remainder }; });
+}
+
+
+std::expected<ParsedUniverseSort, ParseError> parse_universe_sort::operator()(std::string_view input) const
+{
+    return begin_parse(input)
+        .and_then(immediate<parse_keyword_sort>)
+        .and_then(next<parse_digits>)
+        .transform([](ParsedDigits p)
+            {
+                return ParsedUniverseSort{ .level = p.digits, .remainder = p.remainder };
+            });
 }
 
 
@@ -392,6 +458,24 @@ std::expected<ParsedKeywordInductive, ParseError> parse_keyword_inductive::opera
 std::expected<ParsedKeywordWhere, ParseError> parse_keyword_where::operator()(std::string_view input) const
 {
     return parse_keyword_helper<ParsedKeywordWhere, "where">(input);
+}
+
+
+std::expected<ParsedKeywordType, ParseError> parse_keyword_type::operator()(std::string_view input) const
+{
+    return parse_keyword_helper<ParsedKeywordType, "Type">(input);
+}
+
+
+std::expected<ParsedKeywordProp, ParseError> parse_keyword_prop::operator()(std::string_view input) const
+{
+    return parse_keyword_helper<ParsedKeywordProp, "Prop">(input);
+}
+
+
+std::expected<ParsedKeywordSort, ParseError> parse_keyword_sort::operator()(std::string_view input) const
+{
+    return parse_keyword_helper<ParsedKeywordSort, "Sort">(input);
 }
 
 

@@ -18,6 +18,11 @@ struct parse_identifier
     std::expected<ParsedIdentifier, ParseError> operator()(std::string_view input) const;
 };
 
+struct parse_digits
+{
+    std::expected<ParsedDigits, ParseError> operator()(std::string_view input) const;
+};
+
 struct parse_hierarchical_identifier
 {
     std::expected<ParsedHierarchicalIdentifier, ParseError> operator()(std::string_view input) const;
@@ -73,6 +78,21 @@ struct parse_assignment
     std::expected<ParsedAssignment, ParseError> operator()(std::string_view input) const;
 };
 
+struct parse_universe_type
+{
+    std::expected<ParsedUniverseType, ParseError> operator()(std::string_view input) const;
+};
+
+struct parse_universe_prop
+{
+    std::expected<ParsedUniverseProp, ParseError> operator()(std::string_view input) const;
+};
+
+struct parse_universe_sort
+{
+    std::expected<ParsedUniverseSort, ParseError> operator()(std::string_view input) const;
+};
+
 struct parse_type_name
 {
     std::expected<ParsedType, ParseError> operator()(std::string_view input) const;
@@ -116,6 +136,21 @@ struct parse_keyword_inductive
 struct parse_keyword_where
 {
     std::expected<ParsedKeywordWhere, ParseError> operator()(std::string_view input) const;
+};
+
+struct parse_keyword_type
+{
+    std::expected<ParsedKeywordType, ParseError> operator()(std::string_view input) const;
+};
+
+struct parse_keyword_prop
+{
+    std::expected<ParsedKeywordProp, ParseError> operator()(std::string_view input) const;
+};
+
+struct parse_keyword_sort
+{
+    std::expected<ParsedKeywordSort, ParseError> operator()(std::string_view input) const;
 };
 
 struct parse_constant

@@ -1,16 +1,24 @@
 #pragma once
 
+#include <expected>
 #include <memory>
+#include <span>
 #include <string>
 #include <variant>
+#include <vector>
 
 #include "Parsed.h"
 
 struct Expression;
 
+struct Universe
+{
+    int level;
+};
+
 struct Identifier
 {
-    std::string name;
+    std::vector<std::string> components;
 };
 
 struct Function
@@ -42,9 +50,11 @@ concept FunctionComponent =
 
 struct Expression
 {
-    std::variant<Identifier, Function, FunctionAbstraction, FunctionApplication> value;
+    std::variant<Universe, Identifier, Function, FunctionAbstraction, FunctionApplication> value;
 };
 
-Expression create_expression(ParsedExpression p);
-Expression get_type(Expression p);
+std::expected<Expression, std::string> create_expression(ParsedExpression p);
+std::expected<Expression, std::string> create_expression(std::span<ExpressionToken> tokens);
+Expression get_type(Expression const& p);
+std::string to_pretty_string(Expression const& p);
 

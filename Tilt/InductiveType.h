@@ -1,5 +1,6 @@
 #pragma once
 
+#include <expected>
 #include <string>
 #include <vector>
 
@@ -19,5 +20,6 @@ struct InductiveType
     std::vector<Constructor> constructors;
 };
 
-InductiveType create_inductive_type(ParsedInductiveType p);
-Constructor create_constructor(ParsedConstructor p);
+std::expected<InductiveType, std::string> create_inductive_type(ParsedInductiveType p);
+std::expected<Constructor, std::string> create_constructor(ParsedConstructor p);
+std::string to_pretty_string(InductiveType const& p);

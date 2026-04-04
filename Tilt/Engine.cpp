@@ -13,14 +13,19 @@ std::expected<void, Engine::ErrorType> Engine::process(ParsedInductiveType p)
     std::string identifier{ p.identifier.identifier };
     if (identifiers.contains(identifier))
         return std::unexpected("'" + identifier + "' has already been declared");
-    identifiers[identifier] = create_inductive_type(p);
-    return {};
+    return create_inductive_type(p)
+        .transform([this, &identifier](InductiveType&& type)
+        {
+                identifiers[identifier] = std::move(type);
+        });
 }
 
 std::expected<std::string, Engine::ErrorType> Engine::process(ParsedCheckCommand p)
 {
-
-    Expression term = create_expression(p.expression);
-    return std::format("{} : {}", "HI", "HI");
+    return create_expression(p.expression)
+        .transform([](Expression&& exp)
+        {
+                return std::format("{} : {}", to_pretty_string(exp), to_pretty_string(get_type(exp)));
+        });
 }
 

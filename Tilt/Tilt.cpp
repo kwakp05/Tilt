@@ -148,6 +148,12 @@ constexpr std::string parsed_to_name()
         return "ParsedColon";
     else if constexpr (std::is_same_v<T, ParsedHierarchicalIdentifier>)
         return "ParsedHierarchicalIdentifier";
+    else if constexpr (std::is_same_v<T, ParsedUniverseType>)
+        return "ParsedUniverseType";
+    else if constexpr (std::is_same_v<T, ParsedUniverseProp>)
+        return "ParsedUniverseProp";
+    else if constexpr (std::is_same_v<T, ParsedUniverseSort>)
+        return "ParsedUniverseSort";
     else
         static_assert(false, "UNREACHABLE");
 }

@@ -44,6 +44,23 @@ struct ParsedConstant
     std::string_view remainder;
 };
 
+struct ParsedUniverseType
+{
+    int level;
+    std::string_view remainder;
+};
+
+struct ParsedUniverseProp
+{
+    std::string_view remainder;
+};
+
+struct ParsedUniverseSort
+{
+    int level;
+    std::string_view remainder;
+};
+
 struct ParsedType
 {
     std::string_view name;
@@ -71,6 +88,12 @@ struct ParsedRawIdentifier
 struct ParsedIdentifier
 {
     std::string_view identifier;
+    std::string_view remainder;
+};
+
+struct ParsedDigits
+{
+    int digits;
     std::string_view remainder;
 };
 
@@ -156,10 +179,36 @@ struct ParsedKeywordWhere
     std::string_view remainder;
 };
 
+struct ParsedKeywordType
+{
+    std::string_view remainder;
+};
+
+struct ParsedKeywordProp
+{
+    std::string_view remainder;
+};
+
+struct ParsedKeywordSort
+{
+    std::string_view remainder;
+};
+
+using ExpressionToken = std::variant<
+    ParsedHierarchicalIdentifier,
+    ParsedUniverseType,
+    ParsedUniverseProp,
+    ParsedUniverseSort,
+    ParsedOpenParen,
+    ParsedClosedParen,
+    ParsedColon,
+    ParsedOperatorFunction
+>;
+
 struct ParsedExpression
 {
     std::string_view remainder;
-    std::vector<std::variant<ParsedHierarchicalIdentifier, ParsedOpenParen, ParsedClosedParen, ParsedColon, ParsedOperatorFunction>> tokens;
+    std::vector<ExpressionToken> tokens;
 };
 
 struct ParsedTheorem

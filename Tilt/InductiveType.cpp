@@ -1,25 +1,56 @@
+#include <algorithm>
+#include <expected>
+#include <format>
 #include <ranges>
+#include <string>
 
 #include "Expression.h"
 #include "InductiveType.h"
 
-InductiveType create_inductive_type(ParsedInductiveType p)
+std::expected<InductiveType, std::string> create_inductive_type(ParsedInductiveType p)
 {
+    auto type = create_expression(p.type);
+    if (!type)
+        return std::unexpected(type.error());
+
+    std::vector<Constructor> constructors;
+    constructors.reserve(p.constructors.size());
+
+    for (ParsedConstructor const& c : p.constructors)
+    {
+        auto res = create_constructor(c);
+        if (!res)
+            return std::unexpected(res.error());
+        constructors.push_back(std::move(*res));
+    }
+
     return InductiveType
     {
         .name = std::string{p.identifier.identifier},
-        .type = create_expression(p.type),
-        .constructors = p.constructors
-            | std::views::transform([](ParsedConstructor parsed_constructor) { return create_constructor(parsed_constructor); })
-            | std::ranges::to<std::vector<Constructor>>()
+        .type = std::move(*type),
+        .constructors = std::move(constructors)
     };
 }
 
-Constructor create_constructor(ParsedConstructor p)
+std::expected<Constructor, std::string> create_constructor(ParsedConstructor p)
 {
-    return Constructor
+    return create_expression(p.type)
+        .transform([&p](Expression&& exp)
+        {
+                return Constructor
+                {
+                    .name = std::string{p.identifier.identifier},
+                    .type = std::move(exp)
+                };
+        });
+}
+
+std::string to_pretty_string(InductiveType const& p)
+{
+    std::string output = std::format("inductive {} : {} where", p.name, to_pretty_string(p.type));
+    for (Constructor const& c : p.constructors)
     {
-        .name = std::string{p.identifier.identifier},
-        .type = create_expression(p.type)
-    };
+        output += std::format("\n| {} : {}", c.name, to_pretty_string(c.type));
+    }
+    return output;
 }

@@ -21,7 +21,6 @@ public:
                     return [](std::string const& str) { std::println("info: {}", str); };
                 else
                     return []() {};
-
         }();
 
         std::ignore = engine.process(p)
