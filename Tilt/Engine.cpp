@@ -29,3 +29,9 @@ std::expected<std::string, Engine::ErrorType> Engine::process(ParsedCheckCommand
         });
 }
 
+std::variant<InductiveType> const* Engine::find_identifier(std::string const& s) const
+{
+    if (auto it = identifiers.find(s); it != identifiers.end())
+        return &it->second;
+    return nullptr;
+}

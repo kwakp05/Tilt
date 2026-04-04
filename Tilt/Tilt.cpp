@@ -275,6 +275,7 @@ int main()
         {
             print_parsed(parsed_inductive_type.value());
             engine.process(parsed_inductive_type.value());
+            engine.print_identifier("MyNat");
         }
         else
             std::cout << "FAIL " << parsed_inductive_type.error() << "\n";

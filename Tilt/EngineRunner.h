@@ -2,11 +2,14 @@
 
 #include <iostream>
 #include <print>
+#include <stdexcept>
 #include <string>
 #include <type_traits>
+#include <variant>
 #include <utility>
 
 #include "Engine.h"
+#include "InductiveType.h"
 #include "Parsed.h"
 
 class SimpleEngineRunner
@@ -27,6 +30,25 @@ public:
             .transform(value_handler)
             .transform_error([](Engine::ErrorType e) { std::println("{}", e); return e; });
     };
+
+    void print_identifier(std::string const& identifier)
+    {
+        if (Engine::ValueType const* v = engine.find_identifier(identifier))
+        {
+            std::visit([](auto const& value)
+                {
+                    using T = std::remove_cvref_t<decltype(value)>;
+                    if constexpr (std::is_same_v<T, InductiveType>)
+                        std::println("{}", to_pretty_string(value));
+                    else
+                        static_assert(false, "UNREACHABLE");
+                }, *v);
+        }
+        else
+        {
+            throw std::out_of_range("invalid identifier " + identifier);
+        }
+    }
 
 private:
     Engine engine;
