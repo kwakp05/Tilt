@@ -13,6 +13,16 @@
 
 namespace
 {
+
+Identifier create_identifier(ParsedHierarchicalIdentifier p)
+{
+    return Identifier{
+        p.components
+        | std::views::transform([](auto&& x) { return std::string{x.identifier}; })
+        | std::ranges::to<std::vector>()
+    };
+}
+
 struct IntermediateExpression
 {
     Expression expression;
@@ -61,31 +71,32 @@ std::expected<IntermediateExpression, std::string> create_expression_helper(std:
 {
     if (tokens.empty())
         return std::unexpected("unexpected end of input; expected expression");
-    if (tokens.size() == 1 || std::holds_alternative<ParsedClosedParen>(tokens[1]))
-        return std::visit([](Parsed auto&& token) -> std::expected<Expression, std::string>
-            {
-                using T = std::remove_cvref_t<decltype(token)>;
-                if constexpr (std::is_same_v<T, ParsedHierarchicalIdentifier>)
-                    return Expression{ Identifier{
-                        token.components
-                        | std::views::transform([](auto&& x) { return std::string{x.identifier}; })
-                        | std::ranges::to<std::vector>()
-                    } };
-                else if constexpr (std::is_same_v<T, ParsedUniverseType>)
-                    return Expression{ Universe { token.level + 1 } };
-                else if constexpr (std::is_same_v<T, ParsedUniverseProp>)
-                    return Expression{ Universe { 0 } };
-                else if constexpr (std::is_same_v<T, ParsedUniverseSort>)
-                    return Expression{ Universe { token.level } };
-                else
-                    return std::unexpected("how do I parse that");
-            }, tokens[0])
-        .transform([tokens](Expression&& expression)
-            {
-                return IntermediateExpression{ .expression = std::move(expression), .remainder = tokens.subspan<1>()};
-            });
 
-    return create_function(tokens);
+    return std::visit([tokens](Parsed auto&& token) -> std::expected<IntermediateExpression, std::string>
+        {
+            using T = std::remove_cvref_t<decltype(token)>;
+            if constexpr (std::is_same_v<T, ParsedHierarchicalIdentifier>)
+            {
+                return IntermediateExpression{ Expression{ create_identifier(token) }, tokens.subspan<1>()};
+            }
+            else if constexpr (std::is_same_v<T, ParsedUniverseType>)
+                return IntermediateExpression{ Expression{ Universe { token.level + 1 } }, tokens.subspan<1>() };
+            else if constexpr (std::is_same_v<T, ParsedUniverseProp>)
+                return IntermediateExpression{ Expression{ Universe { 0 } }, tokens.subspan<1>() };
+            else if constexpr (std::is_same_v<T, ParsedUniverseSort>)
+                return IntermediateExpression{ Expression{ Universe { token.level } }, tokens.subspan<1>() };
+            else if constexpr (std::is_same_v<T, ParsedOpenParen>)
+                return create_function(tokens);
+            else if constexpr (std::is_same_v<T, ParsedClosedParen>)
+                return std::unexpected("unexpected ')'");
+            else if constexpr (std::is_same_v<T, ParsedColon>)
+                return std::unexpected("unexpected ':'");
+            else if constexpr (std::is_same_v<T, ParsedOperatorFunction>)
+                return std::unexpected("unexpected '->'");
+            else
+                static_assert(false, "UNREACHABLE");
+
+        }, tokens[0]);
 }
 }
 

@@ -290,5 +290,16 @@ int main()
         }
         else
             std::cout << "FAIL " << parsed_inductive_type.error() << "\n";
+
+        input = "#check MyNat.succ MyNat.zero";
+        std::cout << "\nPARSING " << input << "\n";
+        parsed_check_command = begin_parse(input).and_then(immediate<parse_check_command>);
+        if (parsed_check_command)
+        {
+            print_parsed(parsed_check_command.value());
+            engine.process(parsed_check_command.value());
+        }
+        else
+            std::cout << "FAIL " << parsed_inductive_type.error() << "\n";
     }
 }
