@@ -280,7 +280,7 @@ int main()
         else
             std::cout << "FAIL " << parsed_inductive_type.error() << "\n";
 
-        input = "#check MyNat.zero";
+        input = "#check MyNat.succ";
         std::cout << "\nPARSING " << input << "\n";
         auto parsed_check_command = begin_parse(input).and_then(immediate<parse_check_command>);
         if (parsed_check_command)

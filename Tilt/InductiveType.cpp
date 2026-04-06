@@ -1,11 +1,19 @@
 #include <algorithm>
 #include <expected>
 #include <format>
+#include <memory>
 #include <ranges>
 #include <string>
 
 #include "Expression.h"
 #include "InductiveType.h"
+
+Constructor const* InductiveType::scope_find(std::string const& identifier) const
+{
+    if (auto result = std::ranges::find(constructors, identifier, &Constructor::name); result != constructors.end())
+        return std::to_address(result);
+    return nullptr;
+}
 
 std::expected<InductiveType, std::string> create_inductive_type(ParsedInductiveType p)
 {

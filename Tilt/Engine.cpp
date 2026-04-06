@@ -2,12 +2,16 @@
 #include <format>
 #include <iostream>
 #include <optional>
+#include <ranges>
 #include <string>
+#include <variant>
 
 #include "Engine.h"
 #include "Expression.h"
+#include "IdentifierMap.h"
 #include "InductiveType.h"
 #include "Parsed.h"
+#include "Scope.h"
 
 std::expected<void, Engine::ErrorType> Engine::process(ParsedInductiveType p)
 {
@@ -17,7 +21,7 @@ std::expected<void, Engine::ErrorType> Engine::process(ParsedInductiveType p)
     return create_inductive_type(p)
         .transform([this, &identifier](InductiveType&& type)
         {
-                identifiers[identifier] = std::move(type);
+                identifiers.insert(identifier, std::move(type));
         });
 }
 
@@ -36,16 +40,50 @@ std::expected<std::string, Engine::ErrorType> Engine::process(ParsedCheckCommand
         });
 }
 
-std::variant<InductiveType> const* Engine::find_identifier(std::string const& s) const
+IdentifierValueType const* Engine::scope_find(std::string const& s) const
 {
-    if (auto it = identifiers.find(s); it != identifiers.end())
-        return &it->second;
-    return nullptr;
+    return identifiers.scope_find(s);
 }
 
 std::expected<Expression, std::string> Engine::get_type(Expression const& exp) const
 {
     return ::get_type(exp, identifiers);
+}
+
+namespace
+{
+std::expected<Expression, std::string> get_type(Constructor const& value, IdentifierMap const& identifiers)
+{
+    return clone(value.type);
+}
+
+std::expected<Expression, std::string> get_type(InductiveType const& value, IdentifierMap const& identifiers)
+{
+    return clone(value.type);
+}
+
+std::expected<Expression, std::string> get_type(IdentifierValueType const& value, IdentifierMap const& identifiers)
+{
+    return std::visit([&identifiers](auto&& x) { return get_type(x, identifiers); }, value);
+}
+
+std::expected<Expression, std::string> get_type(Identifier const& identifier, IdentifierMap const& identifiers)
+{
+    auto joined_view = identifier.components | std::views::join_with('.');
+    std::string full_identifier = std::string{ joined_view.begin(), joined_view.end() };
+    if (auto resolved = resolve_identifier<IdentifierMap, InductiveType, Constructor>(identifier.components, identifiers))
+    {
+        return std::visit([&full_identifier, &identifiers](auto&& resolved) -> std::expected<Expression, std::string>
+            {
+                using U = std::remove_cvref_t<decltype(resolved.get())>;
+                if constexpr (std::is_same_v<U, IdentifierMap>)
+                    return std::unexpected("invalid identifier " + full_identifier);
+                else
+                    return get_type(resolved, identifiers);
+            }, *resolved);
+    }
+    return std::unexpected("invalid identifier " + full_identifier);
+}
 }
 
 std::expected<Expression, std::string> get_type(Expression const& exp, IdentifierMap const& identifiers)
@@ -56,11 +94,7 @@ std::expected<Expression, std::string> get_type(Expression const& exp, Identifie
             if constexpr (std::is_same_v<T, Universe>)
                 return Expression{ Identifier{ {"TYPE"} } };
             else if constexpr (std::is_same_v<T, Identifier>)
-            {
-                if (auto it = identifiers.find(x.components[0]); it != identifiers.end())
-                    return get_type(it->second, identifiers);
-                return std::unexpected("invalid identifier " + x.components[0]);
-            }
+                return get_type(x, identifiers);
             else if constexpr (std::is_same_v<T, Function>)
                 return Expression{ Identifier{ {"TYPE"} } };
             else if constexpr (std::is_same_v<T, FunctionAbstraction>)
@@ -70,16 +104,4 @@ std::expected<Expression, std::string> get_type(Expression const& exp, Identifie
             else
                 static_assert(false, "UNREACHABLE");
         }, exp.value);
-}
-
-std::expected<Expression, std::string> get_type(IdentifierValueType const& value, IdentifierMap const& identifiers)
-{
-    return std::visit([](auto&& x)
-        {
-            using T = std::remove_cvref_t<decltype(x)>;
-            if constexpr (std::is_same_v<T, InductiveType>)
-                return clone(x.type);
-            else
-                static_assert(false, "UNREACHABLE");
-        }, value);
 }

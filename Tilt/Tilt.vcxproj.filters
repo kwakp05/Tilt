@@ -30,6 +30,9 @@
     <ClCompile Include="InductiveType.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="IdentifierMap.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="ParserUtils.h">
@@ -57,6 +60,12 @@
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="EngineRunner.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="Scope.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="IdentifierMap.h">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>

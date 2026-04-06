@@ -130,6 +130,7 @@
   <ItemGroup>
     <ClCompile Include="Engine.cpp" />
     <ClCompile Include="Expression.cpp" />
+    <ClCompile Include="IdentifierMap.cpp" />
     <ClCompile Include="InductiveType.cpp" />
     <ClCompile Include="Parser.cpp" />
     <ClCompile Include="Tilt.cpp" />
@@ -138,10 +139,12 @@
     <ClInclude Include="Engine.h" />
     <ClInclude Include="EngineRunner.h" />
     <ClInclude Include="Expression.h" />
+    <ClInclude Include="IdentifierMap.h" />
     <ClInclude Include="InductiveType.h" />
     <ClInclude Include="Parsed.h" />
     <ClInclude Include="Parser.h" />
     <ClInclude Include="ParserUtils.h" />
+    <ClInclude Include="Scope.h" />
     <ClInclude Include="StringLiteral.h" />
     <ClInclude Include="VariantUtils.h" />
   </ItemGroup>

@@ -33,7 +33,7 @@ public:
 
     void print_identifier(std::string const& identifier)
     {
-        if (IdentifierValueType const* v = engine.find_identifier(identifier))
+        if (IdentifierValueType const* v = engine.scope_find(identifier))
         {
             std::visit([](auto const& value)
                 {
