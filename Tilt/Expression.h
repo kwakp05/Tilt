@@ -9,7 +9,13 @@
 
 #include "Parsed.h"
 
-struct Expression;
+struct Universe;
+struct Identifier;
+struct Function;
+struct FunctionAbstraction;
+struct FunctionApplication;
+
+using Expression = std::variant<Universe, Identifier, Function, FunctionAbstraction, FunctionApplication>;
 
 struct Universe
 {
@@ -47,11 +53,6 @@ concept FunctionComponent =
     || std::same_as<T, Function>
     || std::same_as<T, FunctionAbstraction>
     || std::same_as<T, FunctionApplication>;
-
-struct Expression
-{
-    std::variant<Universe, Identifier, Function, FunctionAbstraction, FunctionApplication> value;
-};
 
 std::expected<Expression, std::string> create_expression(ParsedExpression p);
 std::expected<Expression, std::string> create_expression(std::span<ExpressionToken> tokens);

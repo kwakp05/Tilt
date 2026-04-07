@@ -103,5 +103,5 @@ std::expected<Expression, std::string> get_type(Expression const& exp, Identifie
                 return Expression{ Identifier{ {"TYPE"} } };
             else
                 static_assert(false, "UNREACHABLE");
-        }, exp.value);
+        }, exp);
 }

@@ -133,7 +133,7 @@ std::string to_pretty_string(Expression const& exp)
                 return std::format("{} {}", to_pretty_string(*x.function), to_pretty_string(*x.argument));
             else
                 static_assert(false, "UNREACHABLE");
-    }, exp.value);
+    }, exp);
 }
 
 Expression clone(Expression const& exp)
@@ -164,5 +164,5 @@ Expression clone(Expression const& exp)
                 } };
             else
                 static_assert(false, "UNREACHABLE");
-        }, exp.value);
+        }, exp);
 }
