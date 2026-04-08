@@ -268,6 +268,7 @@ std::expected<ParsedExpression, ParseError> parse_expression::operator()(std::st
                             parse_universe_prop,
                             parse_universe_sort,
                             parse_colon,
+                            parse_open_paren,
                             parse_closed_paren>>)
                         .transform([&input, &result](Parsed auto&& parsed_any) -> StateType
                         {
@@ -278,7 +279,7 @@ std::expected<ParsedExpression, ParseError> parse_expression::operator()(std::st
                                         result.tokens.push_back(parsed);
                                         input = result.remainder = parsed.remainder;
 
-                                        if constexpr (std::is_same_v<T, ParsedOperatorFunction> || std::is_same_v<T, ParsedColon>)
+                                        if constexpr (std::is_same_v<T, ParsedOperatorFunction> || std::is_same_v<T, ParsedColon> || std::is_same_v<T, ParsedOpenParen>)
                                             return partial_state{};
                                         else
                                             return full_state{};
