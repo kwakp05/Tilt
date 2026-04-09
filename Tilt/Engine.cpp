@@ -4,6 +4,7 @@
 #include <optional>
 #include <ranges>
 #include <string>
+#include <utility>
 #include <variant>
 
 #include "Engine.h"
@@ -84,6 +85,33 @@ std::expected<Expression, std::string> get_type(Identifier const& identifier, Id
     }
     return std::unexpected("invalid identifier " + full_identifier);
 }
+
+std::expected<Expression, std::string> get_type(FunctionApplication const& application, IdentifierMap const& identifiers)
+{
+    auto function_type = get_type(*application.function, identifiers)
+        .and_then([](Expression&& function_type) -> std::expected<Function, std::string>
+            {
+                if (auto ptr = std::get_if<Function>(&function_type))
+                    return std::move(*ptr);
+                return std::unexpected("Function expected but this expression has type " + to_pretty_string(function_type));
+            });
+
+    if (!function_type)
+        return std::unexpected(function_type.error());
+
+    return get_type(*application.argument, identifiers)
+        .and_then([&function_type, &application](Expression&& argument_type) -> std::expected<Expression, std::string>
+            {
+                if (argument_type != *function_type->param_type)
+                    return std::unexpected(std::format(
+                        "Application type mismatch: The argument\n  {}\nhas type\n  {}\nbut is expected to have type\n  {}",
+                        to_pretty_string(*application.argument),
+                        to_pretty_string(argument_type),
+                        to_pretty_string(*function_type->param_type)
+                    ));
+                return std::move(*function_type->return_type);
+            });
+}
 }
 
 std::expected<Expression, std::string> get_type(Expression const& exp, IdentifierMap const& identifiers)
@@ -100,7 +128,7 @@ std::expected<Expression, std::string> get_type(Expression const& exp, Identifie
             else if constexpr (std::is_same_v<T, FunctionAbstraction>)
                 return Expression{ Identifier{ {"TYPE"} } };
             else if constexpr (std::is_same_v<T, FunctionApplication>)
-                return Expression{ Identifier{ {"TYPE"} } };
+                return get_type(x, identifiers);
             else
                 static_assert(false, "UNREACHABLE");
         }, exp);

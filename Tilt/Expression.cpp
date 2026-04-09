@@ -232,3 +232,18 @@ Expression clone(Expression const& exp)
                 static_assert(false, "UNREACHABLE");
         }, exp);
 }
+
+bool operator==(Function const& lhs, Function const& rhs)
+{
+    return *lhs.param_type == *rhs.param_type && *lhs.return_type == *rhs.return_type;
+}
+
+bool operator==(FunctionAbstraction const& lhs, FunctionAbstraction const& rhs)
+{
+    return *lhs.param_type == *rhs.param_type && *lhs.return_type == *rhs.return_type;
+}
+
+bool operator==(FunctionApplication const& lhs, FunctionApplication const& rhs)
+{
+    return *lhs.function == *rhs.function && *lhs.argument == *rhs.argument;
+}

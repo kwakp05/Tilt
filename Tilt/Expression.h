@@ -20,11 +20,15 @@ using Expression = std::variant<Universe, Identifier, Function, FunctionAbstract
 struct Universe
 {
     int level;
+
+    bool operator==(Universe const&) const = default;
 };
 
 struct Identifier
 {
     std::vector<std::string> components;
+
+    bool operator==(Identifier const&) const = default;
 };
 
 struct Function
@@ -59,3 +63,6 @@ std::expected<Expression, std::string> create_expression(std::span<ExpressionTok
 std::string to_pretty_string(Expression const& p);
 Expression clone(Expression const& exp);
 
+bool operator==(Function const& lhs, Function const& rhs);
+bool operator==(FunctionAbstraction const& lhs, FunctionAbstraction const& rhs);
+bool operator==(FunctionApplication const& lhs, FunctionApplication const& rhs);
