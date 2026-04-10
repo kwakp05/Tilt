@@ -3,6 +3,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <ranges>
 #include <string>
 #include <tuple>
 #include <vector>
@@ -30,6 +31,8 @@ std::expected<ParsedIdentifier, ParseError> parse_identifier::operator()(std::st
             {
                 if (p.identifier == "where")
                     return std::unexpected("Unexpected use of reserved word 'where'. Expected identifier.");
+                if (p.identifier == "inductive")
+                    return std::unexpected("Unexpected use of reserved word 'inductive'. Expected identifier.");
                 if (p.identifier == "Type")
                     return std::unexpected("Unexpected use of reserved word 'Type'. Expected identifier.");
                 if (p.identifier == "Prop")
@@ -618,4 +621,22 @@ std::expected<ParsedInductiveType, ParseError> parse_inductive_type::operator()(
         {
                 return ParsedInductiveType{.identifier=*parsed_identifier, .type=*parsed_type, .constructors=*parsed_constructors, .remainder=p.remainder};
         });
+}
+
+
+std::expected<ParsedProgram, ParseError> parse_program::operator()(std::string_view input) const
+{
+    return begin_parse(input)
+        .and_then(next<zero_or_more<any<"unexpected identifier; expected statement", parse_inductive_type, parse_check_command>>>)
+        .and_then([](ParsedZeroOrMore<ParsedAny<ParsedInductiveType, ParsedCheckCommand>>&& p) -> std::expected<ParsedProgram, ParseError>
+            {
+                std::string_view remainder = consume_whitespace(p.remainder);
+                if (!remainder.empty())
+                    return std::unexpected("unexpected identifier; expected statement");
+
+                return ParsedProgram{
+                    .statements=p.value | std::views::transform(&ParsedAny<ParsedInductiveType, ParsedCheckCommand>::value) | std::ranges::to<std::vector>(),
+                    .remainder=remainder
+                };
+            });
 }

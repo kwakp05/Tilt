@@ -182,3 +182,8 @@ struct parse_check_command
 {
     std::expected<ParsedCheckCommand, ParseError> operator()(std::string_view input) const;
 };
+
+struct parse_program
+{
+    std::expected<ParsedProgram, ParseError> operator()(std::string_view input) const;
+};

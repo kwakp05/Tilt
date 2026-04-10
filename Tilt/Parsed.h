@@ -253,3 +253,8 @@ struct ParsedEvalCommand
     std::string_view remainder;
 };
 
+struct ParsedProgram
+{
+    std::vector<std::variant<ParsedInductiveType, ParsedCheckCommand>> statements;
+    std::string_view remainder;
+};

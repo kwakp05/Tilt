@@ -1,18 +1,18 @@
 #include <algorithm>
 #include <concepts>
 #include <expected>
+#include <fstream>
 #include <functional>
 #include <iostream>
 #include <iterator>
-#include <optional>
 #include <ranges>
+#include <sstream>
 #include <string>
 #include <string_view>
 #include <tuple>
 #include <type_traits>
 #include <utility>
 #include <variant>
-#include <vector>
 
 #include "utf8.h"
 
@@ -21,6 +21,35 @@
 #include "Parser.h"
 #include "ParserUtils.h"
 #include "VariantUtils.h"
+
+
+void run_file(std::string const& path)
+{
+    std::ifstream file(path);
+    std::stringstream buffer;
+    buffer << file.rdbuf();
+
+    std::string text = buffer.str();
+    std::expected<ParsedProgram, ParseError> program = begin_parse(text)
+        .and_then(immediate<parse_program>);
+
+    if (program)
+    {
+        SimpleEngineRunner engine;
+        for (std::variant<ParsedInductiveType, ParsedCheckCommand> const& token: program->statements)
+        {
+            std::visit([&engine](auto&& statement)
+                {
+                    engine.process(statement);
+                }, token);
+        }
+    }
+    else
+    {
+        std::println("Failed to run file {}", path);
+        std::println("{}", program.error());
+    }
+}
 
 
 void print_parsed(Parsed auto&& parsed)
@@ -327,4 +356,7 @@ int main()
         else
             std::cout << "FAIL " << parsed_inductive_type.error() << "\n";
     }
+
+    run_file("code.txt");
 }
+

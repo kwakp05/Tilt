@@ -1,0 +1,15 @@
+inductive Nat : Type 0 where
+| zero : Nat
+| succ : (n : Nat) -> Nat
+
+inductive Int : Type 0 where
+| ofNat : (n : Nat) -> Int
+| negSucc : (n : Nat) -> Int
+
+#check Nat
+#check Nat.zero
+#check Nat.succ
+#check Int
+#check Int.ofNat
+#check Int.negSucc
+#check Int.negSucc (Nat.succ Nat.zero)
