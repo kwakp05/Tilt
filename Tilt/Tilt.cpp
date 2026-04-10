@@ -266,21 +266,21 @@ int main()
 
     {
         SimpleEngineRunner engine;
-        std::string input = "inductive MyNat : Type 0 where\n"
-            "| zero : MyNat\n"
-            "| succ : (n : MyNat) -> MyNat\n";
+        std::string input = "inductive Nat : Type 0 where\n"
+            "| zero : Nat\n"
+            "| succ : (n : Nat) -> Nat\n";
         std::cout << "\nPARSING INDUCTIVE TYPE " << input << "\n";
         auto parsed_inductive_type = begin_parse(input).and_then(immediate<parse_inductive_type>);
         if (parsed_inductive_type)
         {
             print_parsed(parsed_inductive_type.value());
             engine.process(parsed_inductive_type.value());
-            engine.print_identifier("MyNat");
+            engine.print_identifier("Nat");
         }
         else
             std::cout << "FAIL " << parsed_inductive_type.error() << "\n";
 
-        input = "#check MyNat.succ";
+        input = "#check Nat.succ";
         std::cout << "\nPARSING " << input << "\n";
         auto parsed_check_command = begin_parse(input).and_then(immediate<parse_check_command>);
         if (parsed_check_command)
@@ -291,7 +291,7 @@ int main()
         else
             std::cout << "FAIL " << parsed_inductive_type.error() << "\n";
 
-        input = "#check MyNat.zero";
+        input = "#check Nat.zero";
         std::cout << "\nPARSING " << input << "\n";
         parsed_check_command = begin_parse(input).and_then(immediate<parse_check_command>);
         if (parsed_check_command)
@@ -303,7 +303,7 @@ int main()
         else
             std::cout << "FAIL " << parsed_inductive_type.error() << "\n";
 
-        input = "#check MyNat.succ MyNat.zero";
+        input = "#check Nat.succ Nat.zero";
         std::cout << "\nPARSING " << input << "\n";
         parsed_check_command = begin_parse(input).and_then(immediate<parse_check_command>);
         if (parsed_check_command)
@@ -315,7 +315,7 @@ int main()
         else
             std::cout << "FAIL " << parsed_inductive_type.error() << "\n";
 
-        input = "#check MyNat.succ (MyNat.succ MyNat.zero)";
+        input = "#check Nat.succ (Nat.succ Nat.zero)";
         std::cout << "\nPARSING " << input << "\n";
         parsed_check_command = begin_parse(input).and_then(immediate<parse_check_command>);
         if (parsed_check_command)
