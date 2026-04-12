@@ -1,7 +1,10 @@
 #pragma once
 
+#include <optional>
+#include <string_view>
 #include <tuple>
 #include <type_traits>
+#include <utility>
 #include <variant>
 
 #include "Parsed.h"
@@ -289,3 +292,31 @@ struct is_parsed_compose<ParsedCompose<Ts...>> : std::true_type {};
 template<class T>
 constexpr bool is_parsed_compose_v = is_parsed_compose<T>::value;
 
+template <Parsed P>
+struct ParsedMaybe
+{
+    std::optional<P> value;
+    std::string_view remainder;
+};
+
+template <Parser P>
+struct maybe
+{
+    using ParsedSubType = get_parser_value_t<P>;
+
+    std::expected<ParsedMaybe<ParsedSubType>, ParseError> operator()(std::string_view input) const
+    {
+        std::string_view remainder = input;
+        std::optional<ParsedSubType> value;
+
+        auto res = begin_parse(input).and_then(immediate<P>);
+
+        if (res)
+        {
+            remainder = res->remainder;
+            value = std::move(*res);
+        }
+
+        return ParsedMaybe{.value=std::move(value), .remainder=remainder};
+    }
+};

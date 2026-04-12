@@ -1,11 +1,12 @@
-inductive Eq : (A : Type 0) -> (a : A) -> (b : A) -> Prop where
-  | refl : (A : Type 0) -> (a : A) -> Eq A a a
 
-inductive Nat : Type 0 where
+inductive Eq : (A : Type) -> (a : A) -> (b : A) -> Prop where
+  | refl : (A : Type) -> (a : A) -> Eq A a a
+
+inductive Nat : Type where
   | zero : Nat
   | succ : (n : Nat) -> Nat
 
-inductive Int : Type 0 where
+inductive Int : Type where
   | ofNat : (n : Nat) -> Int
   | negSucc : (n : Nat) -> Int
 

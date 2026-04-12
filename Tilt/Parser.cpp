@@ -346,10 +346,13 @@ std::expected<ParsedUniverseType, ParseError> parse_universe_type::operator()(st
 {
     return begin_parse(input)
         .and_then(immediate<parse_keyword_type>)
-        .and_then(next<parse_digits>)
-        .transform([](ParsedDigits p)
+        .and_then(next<maybe<parse_digits>>)
+        .transform([](ParsedMaybe<ParsedDigits> p)
             {
-                return ParsedUniverseType{ .level = p.digits, .remainder = p.remainder };
+                return ParsedUniverseType{
+                    .level = p.value.transform([](auto&& d) { return d.digits; }).value_or(0),
+                    .remainder = p.remainder
+                };
             });
 }
 
