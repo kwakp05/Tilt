@@ -188,7 +188,12 @@ std::string to_pretty_string(Expression const& exp)
     {
             using T = std::remove_cvref_t<decltype(x)>;
             if constexpr (std::is_same_v<T, Universe>)
-                return std::format("Sort {}", x.level);
+            {
+                if (x.level == 0)
+                    return std::string{ "Prop" };
+                else
+                    return std::format("Type {}", x.level - 1);
+            }
             else if constexpr (std::is_same_v<T, Identifier>)
                 return x.components | std::views::join_with('.') | std::ranges::to<std::string>();
             else if constexpr (std::is_same_v<T, Function>)
