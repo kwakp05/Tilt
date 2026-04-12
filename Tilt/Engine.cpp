@@ -12,6 +12,7 @@
 #include "IdentifierMap.h"
 #include "InductiveType.h"
 #include "Parsed.h"
+#include "Reducer.h"
 #include "Scope.h"
 
 std::expected<void, Engine::ErrorType> Engine::process(ParsedInductiveType p)
@@ -109,7 +110,11 @@ std::expected<Expression, std::string> get_type(FunctionApplication const& appli
                         to_pretty_string(argument_type),
                         to_pretty_string(*function_type->param_type)
                     ));
-                return std::move(*function_type->return_type);
+                return std::move(delta_reduce(
+                    *function_type->return_type,
+                    { function_type->param_name },
+                    *application.argument
+                ));
             });
 }
 }

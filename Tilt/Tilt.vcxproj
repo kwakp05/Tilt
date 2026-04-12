@@ -133,6 +133,7 @@
     <ClCompile Include="IdentifierMap.cpp" />
     <ClCompile Include="InductiveType.cpp" />
     <ClCompile Include="Parser.cpp" />
+    <ClCompile Include="Reducer.cpp" />
     <ClCompile Include="Tilt.cpp" />
   </ItemGroup>
   <ItemGroup>
@@ -144,6 +145,7 @@
     <ClInclude Include="Parsed.h" />
     <ClInclude Include="Parser.h" />
     <ClInclude Include="ParserUtils.h" />
+    <ClInclude Include="Reducer.h" />
     <ClInclude Include="Scope.h" />
     <ClInclude Include="StringLiteral.h" />
     <ClInclude Include="VariantUtils.h" />
