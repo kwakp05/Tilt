@@ -270,7 +270,10 @@ std::expected<Expression, std::string> get_type_helper(Function const& function,
 
     return expect_type(*function.param_type)
         .transform([&param_type](Universe&& u) { param_type = u; })
-        .and_then([&function, &expect_type]() { return expect_type(*function.return_type); })
+        .and_then([&function, &expect_type, &identifiers]() {
+                ScopedBoundArgument arg{ identifiers, function.param_name, clone(*function.param_type) };
+                return expect_type(*function.return_type);
+            })
         .transform([&param_type](Universe&& return_type)
             {
                 if (return_type.level == 0)

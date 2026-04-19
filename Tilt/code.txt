@@ -35,3 +35,4 @@ def Test : (n : Nat) -> (z : Nat) -> Nat := fun (x : Nat) => fun (y: Nat) => x
 #check Test
 #check Test Nat.zero
 #check Test Nat.zero Nat.zero
+#check (T : Type) -> T
