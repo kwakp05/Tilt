@@ -5,9 +5,10 @@
 #include <unordered_map>
 #include <variant>
 
+#include "Constant.h"
 #include "InductiveType.h"
 
-using IdentifierValueType = std::variant<InductiveType>;
+using IdentifierValueType = std::variant<InductiveType, Constant>;
 
 class IdentifierMap
 {

@@ -34,7 +34,7 @@ Expression delta_reduce(Expression const& target, std::vector<std::string> const
                 return FunctionAbstraction{
                     .param_name=exp.param_name,
                     .param_type=std::make_unique<Expression>(delta_reduce(*exp.param_type, identifier, constant)),
-                    .return_type=std::make_unique<Expression>(delta_reduce(*exp.return_type, identifier, constant)),
+                    .return_value=std::make_unique<Expression>(delta_reduce(*exp.return_value, identifier, constant)),
                 };
             }
             else if constexpr (std::is_same_v<T, FunctionApplication>)

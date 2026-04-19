@@ -7,6 +7,7 @@
 #include <utility>
 #include <variant>
 
+#include "Constant.h"
 #include "Engine.h"
 #include "Expression.h"
 #include "IdentifierMap.h"
@@ -42,6 +43,35 @@ std::expected<std::string, Engine::ErrorType> Engine::process(ParsedCheckCommand
         });
 }
 
+std::expected<void, Engine::ErrorType> Engine::process(ParsedConstant p)
+{
+    std::string identifier{ p.identifier };
+    if (identifiers.contains(identifier))
+        return std::unexpected("'" + identifier + "' has already been declared");
+    return create_constant(p)
+        .and_then([this](Constant&& c) -> std::expected<Constant, std::string>
+            {
+                if (auto value_type = get_type(c.value); !value_type)
+                {
+                    return std::unexpected(value_type.error());
+                }
+                else if (value_type != c.type)
+                {
+                    return std::unexpected(std::format(
+                        "Type mismatch\n  {}\nhas type\n  {}\nbut is expected to have type\n  {}",
+                        to_pretty_string(c.value),
+                        to_pretty_string(*value_type),
+                        to_pretty_string(c.type)
+                    ));
+                }
+                return std::move(c);
+            })
+        .transform([this, &identifier](Constant&& constant)
+            {
+                identifiers.insert(identifier, std::move(constant));
+            });
+}
+
 IdentifierValueType const* Engine::scope_find(std::string const& s) const
 {
     return identifiers.scope_find(s);
@@ -64,6 +94,11 @@ std::expected<Expression, std::string> get_type(InductiveType const& value, Iden
     return clone(value.type);
 }
 
+std::expected<Expression, std::string> get_type(Constant const& value, IdentifierMap const& identifiers)
+{
+    return clone(value.type);
+}
+
 std::expected<Expression, std::string> get_type(IdentifierValueType const& value, IdentifierMap const& identifiers)
 {
     return std::visit([&identifiers](auto&& x) { return get_type(x, identifiers); }, value);
@@ -73,7 +108,7 @@ std::expected<Expression, std::string> get_type(Identifier const& identifier, Id
 {
     auto joined_view = identifier.components | std::views::join_with('.');
     std::string full_identifier = std::string{ joined_view.begin(), joined_view.end() };
-    if (auto resolved = resolve_identifier<IdentifierMap, InductiveType, Constructor>(identifier.components, identifiers))
+    if (auto resolved = resolve_identifier<IdentifierMap, InductiveType, Constructor, Constant>(identifier.components, identifiers))
     {
         return std::visit([&full_identifier, &identifiers](auto&& resolved) -> std::expected<Expression, std::string>
             {

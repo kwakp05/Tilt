@@ -22,3 +22,5 @@ inductive Int : Type where
 #check Int.ofNat
 #check Int.negSucc
 #check Int.negSucc (Nat.succ Nat.zero)
+
+def Test : (n : Nat) -> Nat := fun (x : Nat) => x

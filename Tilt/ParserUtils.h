@@ -68,15 +68,16 @@ inline std::string_view consume_whitespace(std::string_view input)
 template <class Func>
 inline auto effect(Func const& func)
 {
-    return [&func](auto x) {
-        if constexpr (std::is_void_v<std::invoke_result_t<Func, decltype(x)>>)
+    return [&func](auto&& x) {
+        using T = decltype(x);
+        if constexpr (std::is_void_v<std::invoke_result_t<Func, T>>)
         {
             func(x);
-            return std::expected<decltype(x), ParseError>{x};
+            return std::expected<std::remove_cvref_t<T>, ParseError>{std::forward<T>(x)};
         }
         else
         {
-            auto output = func(x);
+            auto output = func(std::forward<T>(x));
             return output;
         }
     };

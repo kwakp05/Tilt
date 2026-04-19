@@ -38,6 +38,11 @@ struct parse_operator_function
     std::expected<ParsedOperatorFunction, ParseError> operator()(std::string_view input) const;
 };
 
+struct parse_operator_function_abstraction
+{
+    std::expected<ParsedOperatorFunctionAbstraction, ParseError> operator()(std::string_view input) const;
+};
+
 struct parse_open_paren
 {
     std::expected<ParsedOpenParen, ParseError> operator()(std::string_view input) const;
@@ -151,6 +156,11 @@ struct parse_keyword_prop
 struct parse_keyword_sort
 {
     std::expected<ParsedKeywordSort, ParseError> operator()(std::string_view input) const;
+};
+
+struct parse_keyword_fun
+{
+    std::expected<ParsedKeywordFun, ParseError> operator()(std::string_view input) const;
 };
 
 struct parse_constant

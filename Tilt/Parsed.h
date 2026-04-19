@@ -38,12 +38,6 @@ struct BoolConstant
     std::string type = "Bool";
 };
 
-struct ParsedConstant
-{
-    std::variant<NatConstant, BoolConstant> value;
-    std::string_view remainder;
-};
-
 struct ParsedUniverseType
 {
     int level;
@@ -110,6 +104,11 @@ struct ParsedControl
 };
 
 struct ParsedOperatorFunction
+{
+    std::string_view remainder;
+};
+
+struct ParsedOperatorFunctionAbstraction
 {
     std::string_view remainder;
 };
@@ -194,6 +193,11 @@ struct ParsedKeywordSort
     std::string_view remainder;
 };
 
+struct ParsedKeywordFun
+{
+    std::string_view remainder;
+};
+
 using ExpressionToken = std::variant<
     ParsedHierarchicalIdentifier,
     ParsedUniverseType,
@@ -202,13 +206,23 @@ using ExpressionToken = std::variant<
     ParsedOpenParen,
     ParsedClosedParen,
     ParsedColon,
-    ParsedOperatorFunction
+    ParsedOperatorFunction,
+    ParsedOperatorFunctionAbstraction,
+    ParsedKeywordFun
 >;
 
 struct ParsedExpression
 {
     std::string_view remainder;
     std::vector<ExpressionToken> tokens;
+};
+
+struct ParsedConstant
+{
+    std::string_view identifier;
+    ParsedExpression type;
+    ParsedExpression value;
+    std::string_view remainder;
 };
 
 struct ParsedTheorem
@@ -255,6 +269,6 @@ struct ParsedEvalCommand
 
 struct ParsedProgram
 {
-    std::vector<std::variant<ParsedInductiveType, ParsedCheckCommand>> statements;
+    std::vector<std::variant<ParsedInductiveType, ParsedCheckCommand, ParsedConstant>> statements;
     std::string_view remainder;
 };

@@ -12,6 +12,7 @@
 
 #include "Expression.h"
 #include "Parsed.h"
+#include "StringLiteral.h"
 
 namespace
 {
@@ -95,6 +96,60 @@ std::expected<IntermediateExpression, std::string> create_function(std::span<Exp
     return std::unexpected("Unable to parse function");
 }
 
+template <size_t Index, Parsed P, StringLiteral ErrorMsg>
+auto expect_token(std::span<ExpressionToken> tokens)
+{
+    return [tokens](auto&& unused) -> std::expected<P*, std::string>
+        {
+            if (tokens.size() <= Index)
+                return std::unexpected("unexpected end of input; " + std::string{ ErrorMsg.value });
+
+            if (auto p = std::get_if<P>(&tokens[Index]))
+                return p;
+
+            return std::unexpected("unexpected token; " + std::string{ ErrorMsg.value });
+        };
+};
+
+std::expected<IntermediateExpression, std::string> create_function_abstraction(std::span<ExpressionToken> tokens)
+{
+    std::string identifier;
+    std::optional<Expression> param_type;
+
+    return expect_token<0, ParsedKeywordFun, "expected 'fun'">(tokens)(0)
+        .and_then(expect_token<1, ParsedOpenParen, "expected '('">(tokens))
+        .and_then(expect_token<2, ParsedHierarchicalIdentifier, "expected identifier">(tokens))
+        .and_then([&identifier](ParsedHierarchicalIdentifier* p) -> std::expected<ParsedHierarchicalIdentifier*, std::string>
+            {
+                if (p->components.size() != 1)
+                    return std::unexpected("invalid binder name, it must be atomic");
+                identifier = std::string{ p->components[0].identifier };
+                return p;
+            })
+        .and_then(expect_token<3, ParsedColon, "expected ':'">(tokens))
+        .and_then([tokens](auto&& unused) { return create_expression_helper(tokens.subspan<4>()); })
+        .and_then([&param_type](IntermediateExpression&& exp) -> std::expected<IntermediateExpression, std::string>
+            {
+                std::span<ExpressionToken> remainder = exp.remainder;
+                param_type = std::move(exp.expression);
+
+                return expect_token<0, ParsedClosedParen, "expected ')'">(remainder)(0)
+                    .and_then(expect_token<1, ParsedOperatorFunctionAbstraction, "expected '=>'">(remainder))
+                    .and_then([remainder](auto&& unused) { return create_expression_helper(remainder.subspan<2>()); });
+            })
+        .transform([&identifier, &param_type](IntermediateExpression&& exp)
+            {
+                return IntermediateExpression{
+                    .expression = FunctionAbstraction{
+                        .param_name = std::move(identifier),
+                        .param_type = std::make_unique<Expression>(std::move(*param_type)),
+                        .return_value = std::make_unique<Expression>(std::move(exp.expression))
+                    },
+                    .remainder = exp.remainder
+                };
+            });
+}
+
 std::expected<IntermediateExpression, std::string> create_expression_helper(std::span<ExpressionToken> tokens)
 {
     std::vector<Expression> expressions;
@@ -104,9 +159,7 @@ std::expected<IntermediateExpression, std::string> create_expression_helper(std:
             {
                 using T = std::remove_cvref_t<decltype(token)>;
                 if constexpr (std::is_same_v<T, ParsedHierarchicalIdentifier>)
-                {
                     return IntermediateExpression{ Expression{ create_identifier(token) }, tokens.subspan<1>() };
-                }
                 else if constexpr (std::is_same_v<T, ParsedUniverseType>)
                     return IntermediateExpression{ Expression{ Universe { token.level + 1 } }, tokens.subspan<1>() };
                 else if constexpr (std::is_same_v<T, ParsedUniverseProp>)
@@ -125,8 +178,8 @@ std::expected<IntermediateExpression, std::string> create_expression_helper(std:
                                     if (exp.remainder.empty())
                                         return std::unexpected("unexpedcted end of input; expected ';'");
                                     if (!std::holds_alternative<ParsedClosedParen>(exp.remainder[0]))
-                                        return std::unexpected("unexpedcted token; expected ';'");
-                                    return IntermediateExpression{std::move(exp.expression), exp.remainder.subspan<1>()};
+                                        return std::unexpected("unexpected token; expected ';'");
+                                    return IntermediateExpression{ std::move(exp.expression), exp.remainder.subspan<1>() };
                                 });
                     }
                 }
@@ -136,6 +189,10 @@ std::expected<IntermediateExpression, std::string> create_expression_helper(std:
                     return std::unexpected("unexpected ':'");
                 else if constexpr (std::is_same_v<T, ParsedOperatorFunction>)
                     return std::unexpected("unexpected '->'");
+                else if constexpr (std::is_same_v<T, ParsedOperatorFunctionAbstraction>)
+                    return std::unexpected("unexpected '=>'");
+                else if constexpr (std::is_same_v<T, ParsedKeywordFun>)
+                    return create_function_abstraction(tokens);
                 else
                     static_assert(false, "UNREACHABLE");
             }, tokens[0]);
@@ -199,7 +256,7 @@ std::string to_pretty_string(Expression const& exp)
             else if constexpr (std::is_same_v<T, Function>)
                 return std::format("({} : {}) -> {}", x.param_name, to_pretty_string(*x.param_type), to_pretty_string(*x.return_type));
             else if constexpr (std::is_same_v<T, FunctionAbstraction>)
-                return std::format("fun {} : {} => {}", x.param_name, to_pretty_string(*x.param_type), to_pretty_string(*x.return_type));
+                return std::format("fun {} : {} => {}", x.param_name, to_pretty_string(*x.param_type), to_pretty_string(*x.return_value));
             else if constexpr (std::is_same_v<T, FunctionApplication>)
                 return std::format("({} {})", to_pretty_string(*x.function), to_pretty_string(*x.argument));
             else
@@ -226,7 +283,7 @@ Expression clone(Expression const& exp)
                 return Expression{ FunctionAbstraction{
                     .param_name = x.param_name,
                     .param_type = std::make_unique<Expression>(clone(*x.param_type)),
-                    .return_type = std::make_unique<Expression>(clone(*x.return_type)),
+                    .return_value = std::make_unique<Expression>(clone(*x.return_value)),
                 } };
             else if constexpr (std::is_same_v<T, FunctionApplication>)
                 return Expression{ FunctionApplication{
@@ -245,7 +302,7 @@ bool operator==(Function const& lhs, Function const& rhs)
 
 bool operator==(FunctionAbstraction const& lhs, FunctionAbstraction const& rhs)
 {
-    return *lhs.param_type == *rhs.param_type && *lhs.return_type == *rhs.return_type;
+    return *lhs.param_type == *rhs.param_type && *lhs.return_value == *rhs.return_value;
 }
 
 bool operator==(FunctionApplication const& lhs, FunctionApplication const& rhs)

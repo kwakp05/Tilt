@@ -36,7 +36,7 @@ void run_file(std::string const& path)
     if (program)
     {
         SimpleEngineRunner engine;
-        for (std::variant<ParsedInductiveType, ParsedCheckCommand> const& token: program->statements)
+        for (auto&& token: program->statements)
         {
             std::visit([&engine](auto&& statement)
                 {
@@ -106,12 +106,11 @@ void print_parsed(Parsed auto&& parsed)
     else if constexpr (std::is_same_v<T, ParsedConstant>)
     {
         std::cout << "ParsedConstant\n";
-        std::visit([](auto&& arg)
-        {
-                std::cout << arg.name << "\n";
-                std::cout << arg.type << "\n";
-                std::cout << arg.value << "\n";
-        }, parsed.value);
+        std::println("{}", parsed.identifier);
+        std::println("TYPE:");
+        print_parsed(parsed.type);
+        std::println("VALUE:");
+        print_parsed(parsed.value);
     }
     else if constexpr (std::is_same_v<T, ParsedConstructor>)
     {
@@ -167,6 +166,8 @@ constexpr std::string parsed_to_name()
         return "ParsedExpression";
     else if constexpr (std::is_same_v<T, ParsedOperatorFunction>)
         return "ParsedOperatorFunction";
+    else if constexpr (std::is_same_v<T, ParsedOperatorFunctionAbstraction>)
+        return "ParsedOperatorFunctionAbstraction";
     else if constexpr (std::is_same_v<T, ParsedIdentifier>)
         return "ParsedIdentifier";
     else if constexpr (std::is_same_v<T, ParsedOpenParen>)
@@ -183,6 +184,8 @@ constexpr std::string parsed_to_name()
         return "ParsedUniverseProp";
     else if constexpr (std::is_same_v<T, ParsedUniverseSort>)
         return "ParsedUniverseSort";
+    else if constexpr (std::is_same_v<T, ParsedKeywordFun>)
+        return "ParsedKeywordFun";
     else
         static_assert(false, "UNREACHABLE");
 }
@@ -196,12 +199,7 @@ int main()
 
     if (x.has_value())
     {
-        std::visit([](auto&& arg)
-            {
-                std::cout << arg.name << "\n";
-                std::cout << arg.type << "\n";
-                std::cout << arg.value << "\n";
-            }, x->value);
+        print_parsed(*x);
     }
     else
         std::cout << "FAIL " << x.error() << "\n";

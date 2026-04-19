@@ -37,11 +37,7 @@ public:
         {
             std::visit([](auto const& value)
                 {
-                    using T = std::remove_cvref_t<decltype(value)>;
-                    if constexpr (std::is_same_v<T, InductiveType>)
-                        std::println("{}", to_pretty_string(value));
-                    else
-                        static_assert(false, "UNREACHABLE");
+                    std::println("{}", to_pretty_string(value));
                 }, *v);
         }
         else

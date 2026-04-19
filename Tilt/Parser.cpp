@@ -3,8 +3,10 @@
 
 #include <algorithm>
 #include <cctype>
+#include <optional>
 #include <ranges>
 #include <string>
+#include <string_view>
 #include <tuple>
 #include <vector>
 #include <variant>
@@ -29,6 +31,8 @@ std::expected<ParsedIdentifier, ParseError> parse_identifier::operator()(std::st
         .and_then(immediate<parse_raw_identifier>)
         .and_then([](ParsedRawIdentifier p) -> std::expected<ParsedIdentifier, ParseError>
             {
+                if (p.identifier == "def")
+                    return std::unexpected("Unexpected use of reserved word 'def'. Expected identifier.");
                 if (p.identifier == "where")
                     return std::unexpected("Unexpected use of reserved word 'where'. Expected identifier.");
                 if (p.identifier == "inductive")
@@ -39,6 +43,8 @@ std::expected<ParsedIdentifier, ParseError> parse_identifier::operator()(std::st
                     return std::unexpected("Unexpected use of reserved word 'Prop'. Expected identifier.");
                 if (p.identifier == "Sort")
                     return std::unexpected("Unexpected use of reserved word 'Sort'. Expected identifier.");
+                if (p.identifier == "fun")
+                    return std::unexpected("Unexpected use of reserved word 'fun'. Expected identifier.");
                 return ParsedIdentifier{ .identifier = p.identifier, .remainder = p.remainder };
             });
 }
@@ -115,6 +121,12 @@ std::expected<P, ParseError> parse_operator_helper(std::string_view input)
 std::expected<ParsedOperatorFunction, ParseError> parse_operator_function::operator()(std::string_view input) const
 {
     return parse_operator_helper<ParsedOperatorFunction, "->">(input);
+}
+
+
+std::expected<ParsedOperatorFunctionAbstraction, ParseError> parse_operator_function_abstraction::operator()(std::string_view input) const
+{
+    return parse_operator_helper<ParsedOperatorFunctionAbstraction, "=>">(input);
 }
 
 
@@ -199,6 +211,7 @@ std::expected<ParsedExpression, ParseError> parse_expression::operator()(std::st
     * partial_state + '(' => partial_state
     * partial_state + ')' => error_state
     * partial_state + ':' => error_state
+    * partial_state + 'fun' => partial_state
     * partial_state + * => error_state
     *
     * full_state + identifier => full_state
@@ -207,6 +220,7 @@ std::expected<ParsedExpression, ParseError> parse_expression::operator()(std::st
     * full_state + '(' => partial_state
     * full_state + ')' => full_state
     * full_state + ':' => partial_state
+    * full_state + 'fun' => partial_state
     * full_state + * => done_state
     */
 
@@ -234,7 +248,8 @@ std::expected<ParsedExpression, ParseError> parse_expression::operator()(std::st
                             parse_universe_type,
                             parse_universe_prop,
                             parse_universe_sort,
-                            parse_open_paren>>)
+                            parse_open_paren,
+                            parse_keyword_fun>>)
                         .transform([&input, &result](Parsed auto&& x)
                         {
                                 return std::visit([&input, &result](Parsed auto&& p) -> StateType
@@ -244,7 +259,7 @@ std::expected<ParsedExpression, ParseError> parse_expression::operator()(std::st
                                         result.tokens.push_back(p);
                                         input = result.remainder = p.remainder;
 
-                                        if constexpr (std::is_same_v<T, ParsedOpenParen>)
+                                        if constexpr (std::is_same_v<T, ParsedOpenParen> || std::is_same_v<T, ParsedKeywordFun>)
                                             return partial_state{};
                                         else
                                             return full_state{};
@@ -266,13 +281,15 @@ std::expected<ParsedExpression, ParseError> parse_expression::operator()(std::st
                         .and_then(next<any<
                             "Expected operator or identifier",
                             parse_operator_function,
+                            parse_operator_function_abstraction,
                             parse_hierarchical_identifier,
                             parse_universe_type,
                             parse_universe_prop,
                             parse_universe_sort,
                             parse_colon,
                             parse_open_paren,
-                            parse_closed_paren>>)
+                            parse_closed_paren,
+                            parse_keyword_fun>>)
                         .transform([&input, &result](Parsed auto&& parsed_any) -> StateType
                         {
                                 return std::visit([&input, &result](Parsed auto&& parsed) -> StateType
@@ -282,7 +299,13 @@ std::expected<ParsedExpression, ParseError> parse_expression::operator()(std::st
                                         result.tokens.push_back(parsed);
                                         input = result.remainder = parsed.remainder;
 
-                                        if constexpr (std::is_same_v<T, ParsedOperatorFunction> || std::is_same_v<T, ParsedColon> || std::is_same_v<T, ParsedOpenParen>)
+                                        if constexpr (
+                                            std::is_same_v<T, ParsedOperatorFunction>
+                                            || std::is_same_v<T, ParsedOperatorFunctionAbstraction>
+                                            || std::is_same_v<T, ParsedColon>
+                                            || std::is_same_v<T, ParsedOpenParen>
+                                            || std::is_same_v<T, ParsedKeywordFun>
+                                        )
                                             return partial_state{};
                                         else
                                             return full_state{};
@@ -486,56 +509,34 @@ std::expected<ParsedKeywordSort, ParseError> parse_keyword_sort::operator()(std:
 }
 
 
+std::expected<ParsedKeywordFun, ParseError> parse_keyword_fun::operator()(std::string_view input) const
+{
+    return parse_keyword_helper<ParsedKeywordFun, "fun">(input);
+}
+
+
 std::expected<ParsedConstant, ParseError> parse_constant::operator()(std::string_view input) const
 {
-    std::string name;
-    std::string type;
-    auto result = begin_parse(input)
-        .and_then(next<parse_keyword_def>)
+    std::string_view identifier;
+    std::optional<ParsedExpression> type;
+    return begin_parse(input)
+        .and_then(immediate<parse_keyword_def>)
         .and_then(next<parse_identifier>)
-        .and_then(effect([&name](ParsedIdentifier x) {name = x.identifier; }))
+        .and_then(effect([&identifier](ParsedIdentifier x) { identifier = x.identifier; }))
         .and_then(next<parse_colon>)
-        .and_then(next<parse_type_name>)
-        .and_then(effect([&type](ParsedType x) {type = x.name; }))
+        .and_then(next<parse_expression>)
+        .and_then(effect([&type](ParsedExpression x) { type = std::move(x); }))
         .and_then(next<parse_assignment>)
-        .and_then([&type](auto x) -> std::expected<std::variant<ParsedNatLiteral, ParsedBoolLiteral>, ParseError>
-        {
-                if (type == "Nat")
-                {
-                    return next<parse_nat_literal>(x);
-                }
-                else if (type == "Bool")
-                {
-                    return next<parse_bool_literal>(x);
-
-                }
-                else
-                {
-                    return std::unexpected("Unexpected type " + type);
-                }
-        })
-        .and_then([&name](auto x) -> std::expected<ParsedConstant, ParseError>
-        {
-                return std::visit([&name](auto arg) -> ParsedConstant
-                {
-                        using T = std::decay_t<decltype(arg)>;
-                        if constexpr (std::is_same_v<T, ParsedNatLiteral>)
-                            return ParsedConstant{ .value = NatConstant{
-                                .name = name,
-                                .value = std::stoi(std::string(arg.literal))
-                        }, .remainder=arg.remainder };
-                        else if constexpr (std::is_same_v<T, ParsedBoolLiteral>)
-                            return ParsedConstant{ .value = BoolConstant{
-                                .name = name,
-                                .value = arg.literal == "true"
-                        }, .remainder = arg.remainder };
-                        else
-                            static_assert(false, "should be unreachable");
-
-                }, x);
-        });
-
-    return result;
+        .and_then(next<parse_expression>)
+        .transform([&identifier, &type](ParsedExpression&& parsed_value)
+            {
+                return ParsedConstant{
+                    .identifier = identifier,
+                    .type = std::move(*type),
+                    .value = std::move(parsed_value),
+                    .remainder = parsed_value.remainder
+                };
+            });
 }
 
 
@@ -630,15 +631,17 @@ std::expected<ParsedInductiveType, ParseError> parse_inductive_type::operator()(
 std::expected<ParsedProgram, ParseError> parse_program::operator()(std::string_view input) const
 {
     return begin_parse(input)
-        .and_then(next<zero_or_more<any<"unexpected identifier; expected statement", parse_inductive_type, parse_check_command>>>)
-        .and_then([](ParsedZeroOrMore<ParsedAny<ParsedInductiveType, ParsedCheckCommand>>&& p) -> std::expected<ParsedProgram, ParseError>
+        .and_then(next<zero_or_more<any<"unexpected identifier; expected statement", parse_inductive_type, parse_check_command, parse_constant>>>)
+        .and_then([](auto&& p) -> std::expected<ParsedProgram, ParseError>
             {
                 std::string_view remainder = consume_whitespace(p.remainder);
                 if (!remainder.empty())
                     return std::unexpected("unexpected identifier; expected statement");
 
+                using ParsedAnyType = decltype(p.value)::value_type;
+
                 return ParsedProgram{
-                    .statements=p.value | std::views::transform(&ParsedAny<ParsedInductiveType, ParsedCheckCommand>::value) | std::ranges::to<std::vector>(),
+                    .statements=p.value | std::views::transform(&ParsedAnyType::value) | std::ranges::to<std::vector>(),
                     .remainder=remainder
                 };
             });

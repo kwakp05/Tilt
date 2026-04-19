@@ -42,7 +42,7 @@ struct FunctionAbstraction
 {
     std::string param_name;
     std::unique_ptr<Expression> param_type;
-    std::unique_ptr<Expression> return_type;
+    std::unique_ptr<Expression> return_value;
 };
 
 struct FunctionApplication
