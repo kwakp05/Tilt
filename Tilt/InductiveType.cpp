@@ -8,13 +8,6 @@
 #include "Expression.h"
 #include "InductiveType.h"
 
-Constructor const* InductiveType::scope_find(std::string const& identifier) const
-{
-    if (auto result = std::ranges::find(constructors, identifier, &Constructor::name); result != constructors.end())
-        return std::to_address(result);
-    return nullptr;
-}
-
 std::expected<InductiveType, std::string> create_inductive_type(ParsedInductiveType p)
 {
     auto type = create_expression(p.type);
@@ -53,12 +46,24 @@ std::expected<Constructor, std::string> create_constructor(ParsedConstructor p)
         });
 }
 
+Constructor clone(Constructor const& c)
+{
+    return Constructor{.name=c.name, .type=clone(c.type)};
+
+}
+
 std::string to_pretty_string(InductiveType const& p)
 {
     std::string output = std::format("inductive {} : {} where", p.name, to_pretty_string(p.type));
     for (Constructor const& c : p.constructors)
     {
-        output += std::format("\n| {} : {}", c.name, to_pretty_string(c.type));
+        output += "\n";
+        output += to_pretty_string(c);
     }
     return output;
+}
+
+std::string to_pretty_string(Constructor const& c)
+{
+    return std::format("{} : {}", c.name, to_pretty_string(c.type));
 }

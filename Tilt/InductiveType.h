@@ -18,10 +18,12 @@ struct InductiveType
     std::string name;
     Expression type;
     std::vector<Constructor> constructors;
-
-    Constructor const* scope_find(std::string const& identifier) const;
 };
 
 std::expected<InductiveType, std::string> create_inductive_type(ParsedInductiveType p);
 std::expected<Constructor, std::string> create_constructor(ParsedConstructor p);
+
+Constructor clone(Constructor const& c);
+
 std::string to_pretty_string(InductiveType const& p);
+std::string to_pretty_string(Constructor const& p);

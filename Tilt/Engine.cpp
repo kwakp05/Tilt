@@ -24,7 +24,12 @@ std::expected<void, Engine::ErrorType> Engine::process(ParsedInductiveType p)
     return create_inductive_type(p)
         .transform([this, &identifier](InductiveType&& type)
         {
+                for (Constructor const& c : type.constructors)
+                {
+                    identifiers.insert(std::format("{}.{}", identifier, c.name), clone(c));
+                }
                 identifiers.insert(identifier, std::move(type));
+
         });
 }
 
@@ -84,47 +89,50 @@ std::expected<Expression, std::string> Engine::get_type(Expression const& exp) c
 
 namespace
 {
-std::expected<Expression, std::string> get_type(Constructor const& value, IdentifierMap const& identifiers)
+std::expected<Expression, std::string> get_type_helper(Expression const& exp, Scope auto const& identifiers);
+
+std::expected<Expression, std::string> get_type_helper(Constructor const& value, Scope auto const& identifiers)
 {
     return clone(value.type);
 }
 
-std::expected<Expression, std::string> get_type(InductiveType const& value, IdentifierMap const& identifiers)
+std::expected<Expression, std::string> get_type_helper(InductiveType const& value, Scope auto const& identifiers)
 {
     return clone(value.type);
 }
 
-std::expected<Expression, std::string> get_type(Constant const& value, IdentifierMap const& identifiers)
+std::expected<Expression, std::string> get_type_helper(Constant const& value, Scope auto const& identifiers)
 {
     return clone(value.type);
 }
 
-std::expected<Expression, std::string> get_type(IdentifierValueType const& value, IdentifierMap const& identifiers)
+std::expected<Expression, std::string> get_type_helper(BoundArgument const& value, Scope auto const& identifiers)
 {
-    return std::visit([&identifiers](auto&& x) { return get_type(x, identifiers); }, value);
+    return clone(value.type);
 }
 
-std::expected<Expression, std::string> get_type(Identifier const& identifier, IdentifierMap const& identifiers)
+std::expected<Expression, std::string> get_type_helper(IdentifierValueType const& value, Scope auto const& identifiers)
+{
+    return std::visit([&identifiers](auto&& x) { return get_type_helper(x, identifiers); }, value);
+}
+
+std::expected<Expression, std::string> get_type_helper(Identifier const& identifier, Scope auto const& identifiers)
 {
     auto joined_view = identifier.components | std::views::join_with('.');
     std::string full_identifier = std::string{ joined_view.begin(), joined_view.end() };
-    if (auto resolved = resolve_identifier<IdentifierMap, InductiveType, Constructor, Constant>(identifier.components, identifiers))
+    if (auto resolved = identifiers.scope_find(full_identifier))
     {
-        return std::visit([&full_identifier, &identifiers](auto&& resolved) -> std::expected<Expression, std::string>
+        return std::visit([&identifiers](auto&& resolved) -> std::expected<Expression, std::string>
             {
-                using U = std::remove_cvref_t<decltype(resolved.get())>;
-                if constexpr (std::is_same_v<U, IdentifierMap>)
-                    return std::unexpected("invalid identifier " + full_identifier);
-                else
-                    return get_type(resolved, identifiers);
+                return get_type_helper(resolved, identifiers);
             }, *resolved);
     }
     return std::unexpected("invalid identifier " + full_identifier);
 }
 
-std::expected<Expression, std::string> get_type(FunctionApplication const& application, IdentifierMap const& identifiers)
+std::expected<Expression, std::string> get_type_helper(FunctionApplication const& application, Scope auto const& identifiers)
 {
-    auto function_type = get_type(*application.function, identifiers)
+    auto function_type = get_type_helper(*application.function, identifiers)
         .and_then([](Expression&& function_type) -> std::expected<Function, std::string>
             {
                 if (auto ptr = std::get_if<Function>(&function_type))
@@ -135,7 +143,7 @@ std::expected<Expression, std::string> get_type(FunctionApplication const& appli
     if (!function_type)
         return std::unexpected(function_type.error());
 
-    return get_type(*application.argument, identifiers)
+    return get_type_helper(*application.argument, identifiers)
         .and_then([&function_type, &application](Expression&& argument_type) -> std::expected<Expression, std::string>
             {
                 if (argument_type != *function_type->param_type)
@@ -152,9 +160,21 @@ std::expected<Expression, std::string> get_type(FunctionApplication const& appli
                 ));
             });
 }
+
+std::expected<Expression, std::string> get_type_helper(FunctionAbstraction const& abstraction, Scope auto const& identifiers)
+{
+    return get_type_helper(*abstraction.return_value, identifiers)
+        .transform([&abstraction, &identifiers](Expression&& exp)
+            {
+                return Expression{ Function{
+                    .param_name = abstraction.param_name,
+                    .param_type = std::make_unique<Expression>(clone(*abstraction.param_type)),
+                    .return_type = std::make_unique<Expression>(std::move(exp))
+                }};
+            });
 }
 
-std::expected<Expression, std::string> get_type(Expression const& exp, IdentifierMap const& identifiers)
+std::expected<Expression, std::string> get_type_helper(Expression const& exp, Scope auto const& identifiers)
 {
     return std::visit([&identifiers](auto&& x) -> std::expected<Expression, std::string>
         {
@@ -162,14 +182,21 @@ std::expected<Expression, std::string> get_type(Expression const& exp, Identifie
             if constexpr (std::is_same_v<T, Universe>)
                 return Expression{ Identifier{ {"TYPE"} } };
             else if constexpr (std::is_same_v<T, Identifier>)
-                return get_type(x, identifiers);
+                return get_type_helper(x, identifiers);
             else if constexpr (std::is_same_v<T, Function>)
                 return Expression{ Identifier{ {"TYPE"} } };
             else if constexpr (std::is_same_v<T, FunctionAbstraction>)
-                return Expression{ Identifier{ {"TYPE"} } };
+                return get_type_helper(x, identifiers);
             else if constexpr (std::is_same_v<T, FunctionApplication>)
-                return get_type(x, identifiers);
+                return get_type_helper(x, identifiers);
             else
                 static_assert(false, "UNREACHABLE");
         }, exp);
+}
+
+}
+
+std::expected<Expression, std::string> get_type(Expression const& exp, IdentifierMap const& identifiers)
+{
+    return get_type_helper(exp, identifiers);
 }

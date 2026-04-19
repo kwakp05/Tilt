@@ -8,7 +8,7 @@
 #include "Constant.h"
 #include "InductiveType.h"
 
-using IdentifierValueType = std::variant<InductiveType, Constant>;
+using IdentifierValueType = std::variant<InductiveType, Constructor, Constant>;
 
 class IdentifierMap
 {
