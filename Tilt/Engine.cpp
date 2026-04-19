@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <expected>
 #include <format>
 #include <functional>
@@ -188,6 +189,11 @@ std::expected<Expression, std::string> get_type_helper(IdentifierValueType const
     return std::visit([&identifiers](auto&& x) { return get_type_helper(x, identifiers); }, value);
 }
 
+std::expected<Expression, std::string> get_type_helper(Universe const& universe, IdentifierMapWrapper& identifiers)
+{
+    return Expression{ Universe{universe.level + 1} };
+}
+
 std::expected<Expression, std::string> get_type_helper(Identifier const& identifier, IdentifierMapWrapper& identifiers)
 {
     auto joined_view = identifier.components | std::views::join_with('.');
@@ -247,23 +253,38 @@ std::expected<Expression, std::string> get_type_helper(FunctionAbstraction const
             });
 }
 
+std::expected<Expression, std::string> get_type_helper(Function const& function, IdentifierMapWrapper& identifiers)
+{
+    auto expect_type = [&identifiers](Expression const& e)
+        {
+            return get_type_helper(e, identifiers)
+                .and_then([&e](Expression&& type) -> std::expected<Universe, std::string>
+                    {
+                        if (auto u = std::get_if<Universe>(&type))
+                            return std::move(*u);
+                        return std::unexpected(std::format("type expected, got\n  ({} : {})", to_pretty_string(e), to_pretty_string(type)));
+                    });
+        };
+
+    std::optional<Universe> param_type;
+
+    return expect_type(*function.param_type)
+        .transform([&param_type](Universe&& u) { param_type = u; })
+        .and_then([&function, &expect_type]() { return expect_type(*function.return_type); })
+        .transform([&param_type](Universe&& return_type)
+            {
+                if (return_type.level == 0)
+                    return Universe{0};
+                return Universe{std::max(param_type->level, return_type.level)};
+
+            });
+}
+
 std::expected<Expression, std::string> get_type_helper(Expression const& exp, IdentifierMapWrapper& identifiers)
 {
     return std::visit([&identifiers](auto&& x) -> std::expected<Expression, std::string>
         {
-            using T = std::remove_cvref_t<decltype(x)>;
-            if constexpr (std::is_same_v<T, Universe>)
-                return Expression{ Identifier{ {"TYPE"} } };
-            else if constexpr (std::is_same_v<T, Identifier>)
-                return get_type_helper(x, identifiers);
-            else if constexpr (std::is_same_v<T, Function>)
-                return Expression{ Identifier{ {"TYPE"} } };
-            else if constexpr (std::is_same_v<T, FunctionAbstraction>)
-                return get_type_helper(x, identifiers);
-            else if constexpr (std::is_same_v<T, FunctionApplication>)
-                return get_type_helper(x, identifiers);
-            else
-                static_assert(false, "UNREACHABLE");
+            return get_type_helper(x, identifiers);
         }, exp);
 }
 
