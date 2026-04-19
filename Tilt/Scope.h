@@ -8,6 +8,8 @@
 #include <type_traits>
 #include <variant>
 
+#include "VariantUtils.h"
+
 namespace
 {
 template <class T>
@@ -25,18 +27,6 @@ concept Scope = requires(T const v, std::string const& identifier)
 {
     { v.scope_find(identifier) } -> ScopeReturn;
 };
-
-namespace
-{
-template <class T>
-struct is_variant : std::false_type {};
-
-template <class... Types>
-struct is_variant<std::variant<Types...>> : std::true_type {};
-
-template <class T>
-concept Variant = is_variant<T>::value;
-}
 
 template <class... Rs>
 std::optional<std::variant<std::reference_wrapper<Rs const>...>> resolve_identifier(std::span<std::string const> identifier, auto const& scope)

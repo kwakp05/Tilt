@@ -17,6 +17,9 @@ struct is_variant<std::variant<Types...>>
 };
 
 template <class T>
+concept Variant = is_variant<T>::value;
+
+template <class T>
 inline constexpr bool is_variant_v = is_variant<T>::value;
 
 static_assert(is_variant_v<std::variant<int, double>>);
