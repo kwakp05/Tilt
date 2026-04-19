@@ -148,7 +148,6 @@
     <ClInclude Include="Parser.h" />
     <ClInclude Include="ParserUtils.h" />
     <ClInclude Include="Reducer.h" />
-    <ClInclude Include="Scope.h" />
     <ClInclude Include="StringLiteral.h" />
     <ClInclude Include="VariantUtils.h" />
   </ItemGroup>

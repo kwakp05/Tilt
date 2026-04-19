@@ -1,6 +1,8 @@
 #include <expected>
+#include <functional>
 #include <string>
 #include <utility>
+#include <variant>
 
 #include "IdentifierMap.h"
 
@@ -14,9 +16,12 @@ bool IdentifierMap::contains(std::string const& identifier) const
     return identifiers.contains(identifier);
 }
 
-IdentifierValueType const* IdentifierMap::scope_find(std::string const& identifier) const
+std::optional<IdentifierReferenceType> IdentifierMap::scope_find(std::string const& identifier) const
 {
     if (auto it = identifiers.find(identifier); it != identifiers.end())
-        return &it->second;
-    return nullptr;
+        return std::visit(
+            [](auto const& x) -> IdentifierReferenceType { return std::cref(x); },
+            it->second
+        );
+    return {};
 }

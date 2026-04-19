@@ -68,9 +68,6 @@
     <ClInclude Include="EngineRunner.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="Scope.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
     <ClInclude Include="IdentifierMap.h">
       <Filter>Header Files</Filter>
     </ClInclude>

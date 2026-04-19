@@ -1,5 +1,6 @@
 #include <expected>
 #include <format>
+#include <functional>
 #include <iostream>
 #include <optional>
 #include <ranges>
@@ -14,7 +15,7 @@
 #include "InductiveType.h"
 #include "Parsed.h"
 #include "Reducer.h"
-#include "Scope.h"
+#include "VariantUtils.h"
 
 std::expected<void, Engine::ErrorType> Engine::process(ParsedInductiveType p)
 {
@@ -77,7 +78,7 @@ std::expected<void, Engine::ErrorType> Engine::process(ParsedConstant p)
             });
 }
 
-IdentifierValueType const* Engine::scope_find(std::string const& s) const
+std::optional<IdentifierReferenceType> Engine::scope_find(std::string const& s) const
 {
     return identifiers.scope_find(s);
 }
@@ -89,34 +90,105 @@ std::expected<Expression, std::string> Engine::get_type(Expression const& exp) c
 
 namespace
 {
-std::expected<Expression, std::string> get_type_helper(Expression const& exp, Scope auto const& identifiers);
 
-std::expected<Expression, std::string> get_type_helper(Constructor const& value, Scope auto const& identifiers)
+struct BoundArgument
+{
+    std::string name;
+    Expression type;
+};
+
+class IdentifierMapWrapper
+{
+public:
+    using ValueType = combine_variants_t<IdentifierReferenceType, std::variant<std::reference_wrapper<BoundArgument const>>>;
+
+    explicit IdentifierMapWrapper(IdentifierMap const& wrapped) : wrapped(wrapped) {}
+
+    std::optional<ValueType> scope_find(std::string const& identifier) const
+    {
+        auto matches = [&identifier](auto const& x) { return x == identifier; };
+        if (auto result = std::ranges::find_if(bound_arguments, matches, &BoundArgument::name); result != bound_arguments.end())
+            return *result;
+
+        return wrapped.scope_find(identifier)
+            .transform([](IdentifierReferenceType t)
+                {
+                    return std::visit([](auto&& x) -> ValueType { return std::cref(x); }, t);
+                });
+    }
+
+    void emplace_bound_argument(BoundArgument const& arg)
+    {
+        bound_arguments.emplace_back(arg);
+    }
+
+    void emplace_bound_argument(BoundArgument&& arg) = delete;
+
+    void erase(std::string const& identifier)
+    {
+        auto matches = [&identifier](auto const& x) { return x == identifier; };
+        if (auto result = std::ranges::find_if(bound_arguments, matches, &BoundArgument::name); result != bound_arguments.end())
+            bound_arguments.erase(result);
+    }
+
+private:
+    IdentifierMap const& wrapped;
+    std::vector<std::reference_wrapper<BoundArgument const>> bound_arguments;
+};
+
+class ScopedBoundArgument
+{
+public:
+    explicit ScopedBoundArgument(IdentifierMapWrapper& identifiers, auto&&... args) :
+        identifiers(identifiers),
+        arg(std::forward<decltype(args)>(args)...)
+    {
+        identifiers.emplace_bound_argument(arg);
+    }
+
+    ~ScopedBoundArgument()
+    {
+        identifiers.erase(arg.name);
+    }
+
+    ScopedBoundArgument(ScopedBoundArgument const& other) = delete;
+    ScopedBoundArgument(ScopedBoundArgument&& other) = delete;
+    ScopedBoundArgument& operator=(ScopedBoundArgument const& other) = delete;
+    ScopedBoundArgument& operator=(ScopedBoundArgument&& other) = delete;
+
+private:
+    IdentifierMapWrapper& identifiers;
+    BoundArgument arg;
+};
+
+std::expected<Expression, std::string> get_type_helper(Expression const& exp, IdentifierMapWrapper& identifiers);
+
+std::expected<Expression, std::string> get_type_helper(Constructor const& value, IdentifierMapWrapper& identifiers)
 {
     return clone(value.type);
 }
 
-std::expected<Expression, std::string> get_type_helper(InductiveType const& value, Scope auto const& identifiers)
+std::expected<Expression, std::string> get_type_helper(InductiveType const& value, IdentifierMapWrapper& identifiers)
 {
     return clone(value.type);
 }
 
-std::expected<Expression, std::string> get_type_helper(Constant const& value, Scope auto const& identifiers)
+std::expected<Expression, std::string> get_type_helper(Constant const& value, IdentifierMapWrapper& identifiers)
 {
     return clone(value.type);
 }
 
-std::expected<Expression, std::string> get_type_helper(BoundArgument const& value, Scope auto const& identifiers)
+std::expected<Expression, std::string> get_type_helper(BoundArgument const& value, IdentifierMapWrapper& identifiers)
 {
     return clone(value.type);
 }
 
-std::expected<Expression, std::string> get_type_helper(IdentifierValueType const& value, Scope auto const& identifiers)
+std::expected<Expression, std::string> get_type_helper(IdentifierValueType const& value, IdentifierMapWrapper& identifiers)
 {
     return std::visit([&identifiers](auto&& x) { return get_type_helper(x, identifiers); }, value);
 }
 
-std::expected<Expression, std::string> get_type_helper(Identifier const& identifier, Scope auto const& identifiers)
+std::expected<Expression, std::string> get_type_helper(Identifier const& identifier, IdentifierMapWrapper& identifiers)
 {
     auto joined_view = identifier.components | std::views::join_with('.');
     std::string full_identifier = std::string{ joined_view.begin(), joined_view.end() };
@@ -130,7 +202,7 @@ std::expected<Expression, std::string> get_type_helper(Identifier const& identif
     return std::unexpected("invalid identifier " + full_identifier);
 }
 
-std::expected<Expression, std::string> get_type_helper(FunctionApplication const& application, Scope auto const& identifiers)
+std::expected<Expression, std::string> get_type_helper(FunctionApplication const& application, IdentifierMapWrapper& identifiers)
 {
     auto function_type = get_type_helper(*application.function, identifiers)
         .and_then([](Expression&& function_type) -> std::expected<Function, std::string>
@@ -161,8 +233,9 @@ std::expected<Expression, std::string> get_type_helper(FunctionApplication const
             });
 }
 
-std::expected<Expression, std::string> get_type_helper(FunctionAbstraction const& abstraction, Scope auto const& identifiers)
+std::expected<Expression, std::string> get_type_helper(FunctionAbstraction const& abstraction, IdentifierMapWrapper& identifiers)
 {
+    ScopedBoundArgument guard{ identifiers, abstraction.param_name, clone(*abstraction.param_type) };
     return get_type_helper(*abstraction.return_value, identifiers)
         .transform([&abstraction, &identifiers](Expression&& exp)
             {
@@ -174,7 +247,7 @@ std::expected<Expression, std::string> get_type_helper(FunctionAbstraction const
             });
 }
 
-std::expected<Expression, std::string> get_type_helper(Expression const& exp, Scope auto const& identifiers)
+std::expected<Expression, std::string> get_type_helper(Expression const& exp, IdentifierMapWrapper& identifiers)
 {
     return std::visit([&identifiers](auto&& x) -> std::expected<Expression, std::string>
         {
@@ -198,5 +271,6 @@ std::expected<Expression, std::string> get_type_helper(Expression const& exp, Sc
 
 std::expected<Expression, std::string> get_type(Expression const& exp, IdentifierMap const& identifiers)
 {
-    return get_type_helper(exp, identifiers);
+    IdentifierMapWrapper identifiers_wrapper{ identifiers };
+    return get_type_helper(exp, identifiers_wrapper);
 }

@@ -23,4 +23,7 @@ inductive Int : Type where
 #check Int.negSucc
 #check Int.negSucc (Nat.succ Nat.zero)
 
-def Test : (n : Nat) -> Nat := fun (x : Nat) => x
+def Test : (n : Nat) -> (z : Nat) -> Nat := fun (x : Nat) => fun (y: Nat) => x
+#check Test
+#check Test Nat.zero
+#check Test Nat.zero Nat.zero
