@@ -30,6 +30,7 @@ std::expected<void, Engine::ErrorType> Engine::process(ParsedInductiveType p)
                 {
                     identifiers.insert(std::format("{}.{}", identifier, c.name), clone(c));
                 }
+                identifiers.insert(std::format("{}.rec", identifier), clone(type.rec));
                 identifiers.insert(identifier, std::move(type));
 
         });
@@ -170,6 +171,11 @@ std::expected<Expression, std::string> get_type_helper(Constructor const& value,
 }
 
 std::expected<Expression, std::string> get_type_helper(InductiveType const& value, IdentifierMapWrapper& identifiers)
+{
+    return clone(value.type);
+}
+
+std::expected<Expression, std::string> get_type_helper(Recursor const& value, IdentifierMapWrapper& identifiers)
 {
     return clone(value.type);
 }

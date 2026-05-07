@@ -1,6 +1,7 @@
 #include <cassert>
 #include <expected>
 #include <format>
+#include <generator>
 #include <memory>
 #include <optional>
 #include <ranges>
@@ -13,6 +14,9 @@
 #include "Expression.h"
 #include "Parsed.h"
 #include "StringLiteral.h"
+
+NamedExpression::NamedExpression(NamedExpressionView const& other)
+    : name(std::string{ other.name }), exp(clone(other.exp)) {}
 
 namespace
 {
@@ -256,7 +260,7 @@ std::string to_pretty_string(Expression const& exp)
             else if constexpr (std::is_same_v<T, Function>)
                 return std::format("({} : {}) -> {}", x.param_name, to_pretty_string(*x.param_type), to_pretty_string(*x.return_type));
             else if constexpr (std::is_same_v<T, FunctionAbstraction>)
-                return std::format("fun {} : {} => {}", x.param_name, to_pretty_string(*x.param_type), to_pretty_string(*x.return_value));
+                return std::format("(fun {} : {} => {})", x.param_name, to_pretty_string(*x.param_type), to_pretty_string(*x.return_value));
             else if constexpr (std::is_same_v<T, FunctionApplication>)
                 return std::format("({} {})", to_pretty_string(*x.function), to_pretty_string(*x.argument));
             else
@@ -293,6 +297,15 @@ Expression clone(Expression const& exp)
             else
                 static_assert(false, "UNREACHABLE");
         }, exp);
+}
+
+std::generator<NamedExpressionView> get_function_args(Expression const& function)
+{
+    if (Function const* ptr = std::get_if<Function>(&function))
+    {
+        co_yield NamedExpressionView{ ptr->param_name, *ptr->param_type};
+        co_yield std::ranges::elements_of(get_function_args(*ptr->return_type));
+    }
 }
 
 bool operator==(Function const& lhs, Function const& rhs)
