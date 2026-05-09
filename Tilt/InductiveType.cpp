@@ -25,7 +25,7 @@ std::expected<InductiveType, std::string> create_inductive_type(ParsedInductiveT
         constructors.push_back(std::move(*res));
     }
 
-    Recursor recursor = create_recursor(std::string{ p.identifier.identifier }, constructors, 1);
+    Recursor recursor = create_recursor(std::string{ p.identifier.identifier }, constructors, 0);
 
     return InductiveType
     {
