@@ -1,47 +1,62 @@
 inductive False : Prop where
 
+#check False
+
+
 def Not : (a : Prop) -> Prop := fun (a : Prop) => (p : a) -> False
+
+#check Not
+
 
 inductive Eq : (A : Type) -> (a : A) -> (b : A) -> Prop where
   | refl : (A : Type) -> (a : A) -> Eq A a a
 
+#check Eq
+#check Eq.refl
+#check Eq.refl Nat
+
+
 inductive Bool : Type where
   | false : Bool
   | true : Bool
-
-inductive Nat : Type where
-  | zero : Nat
-  | succ : (n : Nat) -> Nat
-
-inductive Int : Type where
-  | ofNat : (n : Nat) -> Int
-  | negSucc : (n : Nat) -> Int
-
-
-#check False
-
-#check Not
 
 #check Bool
 #check Bool.false
 #check Bool.true
 #check Bool.rec
 
-#check Eq
-#check Eq.refl
-#check Eq.refl Nat
+
+inductive Nat : Type where
+  | zero : Nat
+  | succ : (n : Nat) -> Nat
 
 #check Nat
 #check Nat.zero
 #check Nat.succ
+
+
+inductive Int : Type where
+  | ofNat : (n : Nat) -> Int
+  | negSucc : (n : Nat) -> Int
 
 #check Int
 #check Int.ofNat
 #check Int.negSucc
 #check Int.negSucc (Nat.succ Nat.zero)
 
+
+inductive Rat : Type where
+  | mk : (num : Int) -> (den : Nat) -> (den_nz : Not (Eq Nat den Nat.zero)) -> (reduced : some) -> Rat
+
+#check Rat
+#check Rat.mk
+#check Rat.mk (Int.ofNat Nat.zero) (Nat.succ Nat.zero)
+
+
 def Test : (n : Nat) -> (z : Nat) -> Nat := fun (x : Nat) => fun (y: Nat) => x
+
 #check Test
 #check Test Nat.zero
 #check Test Nat.zero Nat.zero
 #check (T : Type) -> T
+
