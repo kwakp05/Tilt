@@ -88,6 +88,7 @@ std::expected<Expression, std::string> create_expression(ParsedExpression p);
 std::expected<Expression, std::string> create_expression(std::span<ExpressionToken> tokens);
 std::string to_pretty_string(Expression const& p);
 Expression clone(Expression const& exp);
+NamedExpression clone(NamedExpression const& exp);
 Universe clone(Universe const& universe);
 Identifier clone(Identifier const& identifier);
 Function clone(Function const& function);

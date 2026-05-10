@@ -19,33 +19,41 @@ std::expected<InductiveType, std::string> create_inductive_type(ParsedInductiveT
 
     for (ParsedConstructor const& c : p.constructors)
     {
-        auto res = create_constructor(c);
+        auto res = create_constructor(c, std::string{ p.identifier.identifier });
         if (!res)
             return std::unexpected(res.error());
         constructors.push_back(std::move(*res));
     }
 
-    Recursor recursor = create_recursor(std::string{ p.identifier.identifier }, constructors, 0);
+    std::vector<NamedExpression> parameters;
+    parameters.reserve(p.parameters.size());
+
+    for (ParsedParameter const& param : p.parameters)
+    {
+        auto res = create_expression(param.type);
+        if (!res)
+            return std::unexpected(res.error());
+        parameters.push_back(NamedExpression{ std::string{param.identifier.identifier}, std::move(*res) });
+    }
+
+    Recursor recursor = create_recursor(std::string{ p.identifier.identifier }, parameters, constructors, 0);
 
     return InductiveType
     {
         .name = std::string{p.identifier.identifier},
         .type = std::move(*type),
         .constructors = std::move(constructors),
+        .parameters = std::move(parameters),
         .rec = std::move(recursor)
     };
 }
 
-std::expected<Constructor, std::string> create_constructor(ParsedConstructor p)
+std::expected<Constructor, std::string> create_constructor(ParsedConstructor p, std::string type_name)
 {
     return create_expression(p.type)
-        .transform([&p](Expression&& exp)
+        .transform([&p, &type_name](Expression&& exp)
         {
-                return Constructor
-                {
-                    .name = std::string{p.identifier.identifier},
-                    .type = std::move(exp)
-                };
+                return Constructor{ std::move(type_name), std::string{p.identifier.identifier}, std::move(exp) };
         });
 }
 
@@ -83,17 +91,35 @@ NamedExpression create_minor_premise(std::string const& type_name, Constructor c
 }
 }
 
-Recursor create_recursor(std::string const& name, std::vector<Constructor> const& constructors, int motive_universe)
+namespace
 {
-    NamedExpression motive = NamedExpression{
+NamedExpression create_motive(std::string const& name, std::vector<NamedExpression> const& parameters, int motive_universe)
+{
+    std::vector<Expression> terms;
+    terms.reserve(parameters.size() + 1);
+    terms.emplace_back(Identifier{{ name }});
+    std::ranges::move(
+        parameters
+            | std::views::transform([](NamedExpression const& x) { return Identifier{{x.name}}; })
+            | std::ranges::to<std::vector<Expression>>(),
+        std::back_inserter(terms)
+    );
+
+    return NamedExpression{
         "motive",
         Function
         {
             .param_name = "_",
-            .param_type = std::make_unique<Expression>(Identifier{{name}}),
+            .param_type = std::make_unique<Expression>(create_function_application_from_terms(terms)),
             .return_type = std::make_unique<Expression>(Universe{motive_universe}),
         }
     };
+}
+}
+
+Recursor create_recursor(std::string const& name, std::vector<NamedExpression> const& parameters, std::vector<Constructor> const& constructors, int motive_universe)
+{
+    NamedExpression motive = create_motive(name, parameters, motive_universe);
 
     std::vector<NamedExpression> minor_premises = constructors
         | std::views::transform([&name](Constructor const& c) { return create_minor_premise(name, c); })
@@ -111,8 +137,9 @@ Recursor create_recursor(std::string const& name, std::vector<Constructor> const
     };
 
     std::vector<NamedExpression> terms;
-    terms.reserve(minor_premises.size() + 3);
+    terms.reserve(parameters.size() + minor_premises.size() + 3);
 
+    std::ranges::move(parameters | std::views::transform([](NamedExpression const& x) { return clone(x); }), std::back_inserter(terms));
     terms.emplace_back(std::move(motive));
     std::ranges::move(minor_premises, std::back_inserter(terms));
     terms.emplace_back(std::move(major_premise));
@@ -123,7 +150,7 @@ Recursor create_recursor(std::string const& name, std::vector<Constructor> const
 
 Constructor clone(Constructor const& c)
 {
-    return Constructor{.name=c.name, .type=clone(c.type)};
+    return Constructor{c.type_name, c.name, clone(c.type)};
 }
 
 Recursor clone(Recursor const& rec)

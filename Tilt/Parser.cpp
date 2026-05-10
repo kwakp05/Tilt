@@ -233,10 +233,30 @@ std::expected<ParsedExpression, ParseError> parse_expression::operator()(std::st
     struct done_state {};
     using StateType = std::variant<partial_state, full_state, error_state, done_state>;
     StateType state{ partial_state{} };
+    int paren_level = 0;
+
+    auto paren_is_balanced = [&paren_level](Parsed auto&& p)
+        {
+            using T = std::remove_cvref_t<decltype(p)>;
+            if constexpr (std::is_same_v<T, ParsedOpenParen>)
+            {
+                paren_level++;
+                return true;
+            }
+            if constexpr (std::is_same_v<T, ParsedClosedParen>)
+            {
+                paren_level--;
+                return paren_level >= 0;
+            }
+            else
+            {
+                return true;
+            }
+        };
 
     while (!std::holds_alternative<error_state>(state) && !std::holds_alternative<done_state>(state))
     {
-        state = std::visit([&input, &result](auto&& x) -> StateType
+        state = std::visit([&input, &result, &paren_is_balanced](auto&& x) -> StateType
         {
                 using T = std::remove_cvref_t<decltype(x)>;
                 if constexpr (std::is_same_v<T, partial_state>)
@@ -250,8 +270,10 @@ std::expected<ParsedExpression, ParseError> parse_expression::operator()(std::st
                             parse_universe_sort,
                             parse_open_paren,
                             parse_keyword_fun>>)
-                        .transform([&input, &result](Parsed auto&& x)
+                        .transform([&input, &result, &paren_is_balanced](Parsed auto&& x) -> StateType
                         {
+                                if (!std::visit(paren_is_balanced, x.value))
+                                    return done_state{};
                                 return std::visit([&input, &result](Parsed auto&& p) -> StateType
                                 {
                                         using T = std::remove_cvref_t<decltype(p)>;
@@ -290,8 +312,10 @@ std::expected<ParsedExpression, ParseError> parse_expression::operator()(std::st
                             parse_open_paren,
                             parse_closed_paren,
                             parse_keyword_fun>>)
-                        .transform([&input, &result](Parsed auto&& parsed_any) -> StateType
+                        .transform([&input, &result, &paren_is_balanced](Parsed auto&& parsed_any) -> StateType
                         {
+                                if (!std::visit(paren_is_balanced, parsed_any.value))
+                                    return done_state{};
                                 return std::visit([&input, &result](Parsed auto&& parsed) -> StateType
                                 {
                                         using T = std::remove_cvref_t<decltype(parsed)>;
@@ -566,6 +590,23 @@ std::expected<ParsedAxiom, ParseError> parse_axiom::operator()(std::string_view 
 }
 
 
+std::expected<ParsedParameter, ParseError> parse_parameter::operator()(std::string_view input) const
+{
+    std::optional<std::string_view> identifier;
+    std::optional<ParsedExpression> type;
+
+    return begin_parse(input)
+        .and_then(immediate<parse_open_paren>)
+        .and_then(next<parse_identifier>)
+        .and_then(effect([&identifier](ParsedIdentifier p) { identifier = p.identifier; }))
+        .and_then(next<parse_colon>)
+        .and_then(next<parse_expression>)
+        .and_then(effect([&type](ParsedExpression p) { type = p; }))
+        .and_then(next<parse_closed_paren>)
+        .transform([&identifier, &type](ParsedClosedParen p) { return ParsedParameter{ .identifier = *identifier, .type = *type , .remainder=p.remainder}; });
+}
+
+
 std::expected<ParsedTheorem, ParseError> parse_theorem::operator()(std::string_view input) const
 {
     std::optional<std::string_view> identifier;
@@ -609,21 +650,30 @@ std::expected<ParsedInductiveType, ParseError> parse_inductive_type::operator()(
 {
     std::optional<ParsedIdentifier> parsed_identifier;
     std::optional<std::vector<ParsedConstructor>> parsed_constructors;
+    std::optional<std::vector<ParsedParameter>> parsed_parameters;
     std::optional<ParsedExpression> parsed_type;
 
     return begin_parse(input)
         .and_then(immediate<parse_keyword_inductive>)
         .and_then(next<parse_identifier>)
         .and_then(effect([&parsed_identifier](ParsedIdentifier p) { parsed_identifier = p; }))
+        .and_then(next<zero_or_more<parse_parameter>>)
+        .and_then(effect([&parsed_parameters](ParsedZeroOrMore<ParsedParameter> p) { parsed_parameters = std::move(p.value); }))
         .and_then(next<parse_colon>)
         .and_then(next<parse_expression>)
         .and_then(effect([&parsed_type](ParsedExpression p) { parsed_type = p; }))
         .and_then(next<parse_keyword_where>)
         .and_then(next<zero_or_more<parse_constructor>>)
         .and_then(effect([&parsed_constructors](ParsedZeroOrMore<ParsedConstructor> p) { parsed_constructors = p.value; }))
-        .transform([parsed_identifier, &parsed_constructors, &parsed_type](Parsed auto&& p)
+        .transform([parsed_identifier, &parsed_constructors, &parsed_parameters, &parsed_type](Parsed auto&& p)
         {
-                return ParsedInductiveType{.identifier=*parsed_identifier, .type=*parsed_type, .constructors=*parsed_constructors, .remainder=p.remainder};
+                return ParsedInductiveType{
+                    .identifier=*parsed_identifier,
+                    .type=*parsed_type,
+                    .constructors=*parsed_constructors,
+                    .parameters=*parsed_parameters,
+                    .remainder=p.remainder
+                };
         });
 }
 

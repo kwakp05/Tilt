@@ -240,6 +240,13 @@ struct ParsedAxiom
     std::string_view remainder;
 };
 
+struct ParsedParameter
+{
+    ParsedIdentifier identifier;
+    ParsedExpression type;
+    std::string_view remainder;
+};
+
 struct ParsedConstructor
 {
     ParsedIdentifier identifier;
@@ -252,6 +259,7 @@ struct ParsedInductiveType
     ParsedIdentifier identifier;
     ParsedExpression type;
     std::vector<ParsedConstructor> constructors;
+    std::vector<ParsedParameter> parameters;
     std::string_view remainder;
 };
 

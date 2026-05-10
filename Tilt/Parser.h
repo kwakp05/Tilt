@@ -173,6 +173,11 @@ struct parse_axiom
     std::expected<ParsedAxiom, ParseError> operator()(std::string_view input) const;
 };
 
+struct parse_parameter
+{
+    std::expected<ParsedParameter, ParseError> operator()(std::string_view input) const;
+};
+
 struct parse_theorem
 {
     std::expected<ParsedTheorem, ParseError> operator()(std::string_view input) const;

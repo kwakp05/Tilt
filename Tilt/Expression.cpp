@@ -276,6 +276,11 @@ Expression clone(Expression const& exp)
         }, exp);
 }
 
+NamedExpression clone(NamedExpression const& exp)
+{
+    return NamedExpression(exp.name, clone(exp.exp));
+}
+
 Universe clone(Universe const& universe)
 {
     return universe;

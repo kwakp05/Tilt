@@ -167,12 +167,38 @@ std::expected<Expression, std::string> get_type_helper(Expression const& exp, Id
 
 std::expected<Expression, std::string> get_type_helper(Constructor const& value, IdentifierMapWrapper& identifiers)
 {
-    return clone(value.type);
+    std::optional<std::reference_wrapper<InductiveType const>> inductive_type = identifiers.scope_find(value.type_name)
+        .and_then([](auto&& v) -> std::optional<std::reference_wrapper<InductiveType const>>
+            {
+                if (auto ptr = std::get_if<std::reference_wrapper<InductiveType const>>(&v))
+                    return *ptr;
+                return {};
+            });
+
+    if (inductive_type)
+    {
+        std::vector<NamedExpression> terms = inductive_type->get().parameters
+            | std::views::transform([](NamedExpression const& x) { return clone(x); })
+            | std::ranges::to<std::vector<NamedExpression>>();
+        terms.emplace_back("", clone(value.type));
+        return create_function_from_terms(terms);
+    }
+
+    return std::unexpected(std::format(
+        "unable to compute type of constructor {}, '{}' does not reference an inductive type",
+        value.name,
+        value.type_name
+    ));
 }
 
 std::expected<Expression, std::string> get_type_helper(InductiveType const& value, IdentifierMapWrapper& identifiers)
 {
-    return clone(value.type);
+    std::vector<NamedExpression> terms = value.parameters
+        | std::views::transform([](NamedExpression const& x) { return clone(x); })
+        | std::ranges::to<std::vector<NamedExpression>>();
+    terms.emplace_back("", clone(value.type));
+
+    return create_function_from_terms(terms);
 }
 
 std::expected<Expression, std::string> get_type_helper(Recursor const& value, IdentifierMapWrapper& identifiers)

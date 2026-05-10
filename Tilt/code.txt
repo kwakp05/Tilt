@@ -1,3 +1,13 @@
+inductive Or (a : Prop) (b : Prop) : Prop where
+  | inl : (h : a) -> Or a b
+  | inr : (h : b) -> Or a b
+
+#check Or
+#check Or.inl
+#check Or.inr
+#check Or.rec
+
+
 inductive False : Prop where
 
 #check False
