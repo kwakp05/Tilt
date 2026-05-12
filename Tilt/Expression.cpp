@@ -252,6 +252,8 @@ std::string to_pretty_string(Expression const& exp)
             {
                 if (x.level == 0)
                     return std::string{ "Prop" };
+                else if (x.level == 1)
+                    return std::string{ "Type" };
                 else
                     return std::format("Type {}", x.level - 1);
             }
