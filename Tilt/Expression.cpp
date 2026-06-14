@@ -243,6 +243,25 @@ std::expected<Expression, std::string> create_expression(std::span<ExpressionTok
             });
 }
 
+namespace
+{
+bool need_to_wrap_as_arg(Expression const& exp)
+{
+    return std::visit([](auto&& x)
+        {
+            using T = std::remove_cvref_t<decltype(x)>;
+            if constexpr (std::is_same_v<T, Universe>)
+                return x.level > 1;
+            else if constexpr (std::is_same_v<T, Identifier>)
+                return false;
+            else if constexpr (std::is_same_v<T, Function> || std::is_same_v<T, FunctionAbstraction> || std::is_same_v<T, FunctionApplication>)
+                return true;
+            else
+                static_assert(false, "UNREACHABLE");
+        }, exp);
+}
+}
+
 std::string to_pretty_string(Expression const& exp)
 {
     return std::visit([](auto&& x)
@@ -262,9 +281,18 @@ std::string to_pretty_string(Expression const& exp)
             else if constexpr (std::is_same_v<T, Function>)
                 return std::format("({} : {}) -> {}", x.param_name, to_pretty_string(*x.param_type), to_pretty_string(*x.return_type));
             else if constexpr (std::is_same_v<T, FunctionAbstraction>)
-                return std::format("(fun {} : {} => {})", x.param_name, to_pretty_string(*x.param_type), to_pretty_string(*x.return_value));
+                return std::format("fun {} : {} => {}", x.param_name, to_pretty_string(*x.param_type), to_pretty_string(*x.return_value));
             else if constexpr (std::is_same_v<T, FunctionApplication>)
-                return std::format("({} {})", to_pretty_string(*x.function), to_pretty_string(*x.argument));
+            {
+                auto do_format = [&x]<StringLiteral Fmt>()
+                {
+                    return std::format(Fmt.value, to_pretty_string(*x.function), to_pretty_string(*x.argument));
+                };
+
+                if (need_to_wrap_as_arg(*x.argument))
+                    return do_format.template operator()<"{} ({})">();
+                return do_format.template operator()<"{} {}">();
+            }
             else
                 static_assert(false, "UNREACHABLE");
     }, exp);
