@@ -262,6 +262,25 @@ bool need_to_wrap_as_arg(Expression const& exp)
 }
 }
 
+namespace
+{
+bool need_to_wrap_as_function(Expression const& exp)
+{
+    return std::visit([](auto&& x)
+        {
+            using T = std::remove_cvref_t<decltype(x)>;
+            if constexpr (std::is_same_v<T, Universe>)
+                return x.level > 1;
+            else if constexpr (std::is_same_v<T, Identifier> || std::is_same_v<T, FunctionApplication>)
+                return false;
+            else if constexpr (std::is_same_v<T, Function> || std::is_same_v<T, FunctionAbstraction>)
+                return true;
+            else
+                static_assert(false, "UNREACHABLE");
+        }, exp);
+}
+}
+
 std::string to_pretty_string(Expression const& exp)
 {
     return std::visit([](auto&& x)
@@ -289,7 +308,13 @@ std::string to_pretty_string(Expression const& exp)
                     return std::format(Fmt.value, to_pretty_string(*x.function), to_pretty_string(*x.argument));
                 };
 
-                if (need_to_wrap_as_arg(*x.argument))
+                bool wrap_function = need_to_wrap_as_function(*x.function);
+                bool wrap_arg = need_to_wrap_as_arg(*x.argument);
+                if (wrap_function && wrap_arg)
+                    return do_format.template operator()<"({}) ({})">();
+                if (wrap_function)
+                    return do_format.template operator()<"({}) {}">();
+                if (wrap_arg)
                     return do_format.template operator()<"{} ({})">();
                 return do_format.template operator()<"{} {}">();
             }
