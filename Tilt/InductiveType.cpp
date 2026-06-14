@@ -60,16 +60,18 @@ std::expected<Constructor, std::string> create_constructor(ParsedConstructor p, 
 namespace
 {
 
-NamedExpression create_minor_premise(std::string const& type_name, Constructor const& c)
+NamedExpression create_minor_premise(std::string const& type_name, Constructor const& c, std::vector<NamedExpression> const& type_parameters)
 {
     std::vector<NamedExpression> function_terms = get_function_args(c.type)
         | std::views::transform([](NamedExpressionView&& x) { return NamedExpression(x); })
         | std::ranges::to<std::vector<NamedExpression>>();
 
-    Expression constructor_instance = [&c, &type_name, &function_terms]()
+    Expression constructor_instance = [&c, &type_name, &function_terms, &type_parameters]()
         {
             std::vector<Expression> terms;
+            terms.reserve(1 + type_parameters.size() + function_terms.size());
             terms.emplace_back(Identifier{ {type_name, c.name} });
+            terms.append_range(type_parameters | std::views::transform([](NamedExpression const& x) { return Identifier{{x.name}}; }));
             terms.append_range(function_terms | std::views::transform([](NamedExpression const& x) { return Identifier{{x.name}}; }));
             return create_function_application_from_terms(terms);
         }();
@@ -87,6 +89,22 @@ NamedExpression create_minor_premise(std::string const& type_name, Constructor c
     {
         c.name,
         create_function_from_terms(function_terms)
+    };
+}
+}
+
+namespace
+{
+NamedExpression create_major_premise(std::string_view type_name, std::vector<NamedExpression> const& parameters)
+{
+    std::vector<Expression> terms;
+    terms.reserve(1 + parameters.size());
+    terms.push_back(Identifier{{std::string{type_name}}});
+    terms.append_range(parameters | std::views::transform([](NamedExpression const& x) { return Identifier{{x.name}}; }));
+
+    return NamedExpression{
+        "t",
+        create_function_application_from_terms(terms)
     };
 }
 }
@@ -122,10 +140,10 @@ Recursor create_recursor(std::string const& name, std::vector<NamedExpression> c
     NamedExpression motive = create_motive(name, parameters, motive_universe);
 
     std::vector<NamedExpression> minor_premises = constructors
-        | std::views::transform([&name](Constructor const& c) { return create_minor_premise(name, c); })
+        | std::views::transform([&name, &parameters](Constructor const& c) { return create_minor_premise(name, c, parameters); })
         | std::ranges::to<std::vector<NamedExpression>>();
 
-    NamedExpression major_premise = NamedExpression{ "t", Identifier{{name}} };
+    NamedExpression major_premise = create_major_premise(name, parameters);
 
     NamedExpression return_type = NamedExpression{
         "",
