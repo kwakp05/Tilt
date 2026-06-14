@@ -18,8 +18,8 @@ def Not : (a : Prop) -> Prop := fun (a : Prop) => (p : a) -> False
 #check Not
 
 
-inductive Eq : (A : Type) -> (a : A) -> (b : A) -> Prop where
-  | refl : (A : Type) -> (a : A) -> Eq A a a
+inductive Eq (A : Type) : (a : A) -> (b : A) -> Prop where
+  | refl : (a : A) -> Eq A a a
 
 #check Eq
 #check Eq.refl
