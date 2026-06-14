@@ -23,7 +23,6 @@ inductive Eq : (A : Type) -> (a : A) -> (b : A) -> Prop where
 
 #check Eq
 #check Eq.refl
-#check Eq.refl Nat
 
 
 inductive Bool : Type where
