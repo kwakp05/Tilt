@@ -34,8 +34,8 @@ IdentifierMapWrapper::IdentifierMapWrapper(IdentifierMap const& wrapped) : wrapp
 std::optional<IdentifierMapWrapper::ValueType> IdentifierMapWrapper::scope_find(std::string const& identifier) const
 {
     auto matches = [&identifier](auto const& x) { return x == identifier; };
-    if (auto result = std::ranges::find_if(bound_arguments, matches, &BoundArgument::name); result != bound_arguments.end())
-        return *result;
+    if (auto result = std::ranges::find_last_if(bound_arguments, matches, &BoundArgument::name); !result.empty())
+        return *result.begin();
 
     return wrapped.scope_find(identifier)
         .transform([](IdentifierReferenceType t)
