@@ -63,13 +63,17 @@ std::expected<void, Engine::ErrorType> Engine::process(ParsedConstant p)
                 {
                     return std::unexpected(value_type.error());
                 }
-                else if (value_type != c.type)
+                else if (auto res = definitionally_equivalent(*value_type, c.type, identifiers); !res)
+                {
+                    return std::unexpected{std::format("Failed to reduce: '{}'", res.error())};
+                }
+                else if (!res->result)
                 {
                     return std::unexpected(std::format(
                         "Type mismatch\n  {}\nhas type\n  {}\nbut is expected to have type\n  {}",
                         to_pretty_string(c.value),
-                        to_pretty_string(*value_type),
-                        to_pretty_string(c.type)
+                        to_pretty_string(res->lhs_reduced),
+                        to_pretty_string(res->rhs_reduced)
                     ));
                 }
                 return std::move(c);
@@ -184,14 +188,18 @@ std::expected<Expression, std::string> get_type_helper(FunctionApplication const
         return std::unexpected(function_type.error());
 
     return get_type_helper(*application.argument, identifiers)
-        .and_then([&function_type, &application](Expression&& argument_type) -> std::expected<Expression, std::string>
+        .and_then([&function_type, &application, &identifiers](Expression&& argument_type) -> std::expected<Expression, std::string>
             {
-                if (argument_type != *function_type->param_type)
+                if (auto res = definitionally_equivalent(argument_type, *function_type->param_type, identifiers); !res)
+                {
+                    return std::unexpected(res.error());
+                }
+                else if (!res->result)
                     return std::unexpected(std::format(
                         "Application type mismatch: The argument\n  {}\nhas type\n  {}\nbut is expected to have type\n  {}",
                         to_pretty_string(*application.argument),
-                        to_pretty_string(argument_type),
-                        to_pretty_string(*function_type->param_type)
+                        to_pretty_string(res->lhs_reduced),
+                        to_pretty_string(res->rhs_reduced)
                     ));
                 return std::move(delta_reduce(
                     *function_type->return_type,
@@ -205,7 +213,7 @@ std::expected<Expression, std::string> get_type_helper(FunctionAbstraction const
 {
     auto guard = identifiers.emplace_bound_argument(abstraction.param_name, clone(*abstraction.param_type));
     return get_type_helper(*abstraction.return_value, identifiers)
-        .transform([&abstraction, &identifiers](Expression&& exp)
+        .transform([&abstraction](Expression&& exp)
             {
                 return Expression{ Function{
                     .param_name = abstraction.param_name,

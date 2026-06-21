@@ -1,10 +1,15 @@
+#include <expected>
+#include <format>
 #include <memory>
+#include <ranges>
 #include <string>
 #include <type_traits>
+#include <utility>
 #include <variant>
 #include <vector>
 
 #include "Expression.h"
+#include "IdentifierMap.h"
 #include "Reducer.h"
 
 Expression delta_reduce(Expression const& target, std::vector<std::string> const& identifier, Expression const& constant)
@@ -47,4 +52,99 @@ Expression delta_reduce(Expression const& target, std::vector<std::string> const
             else
                 static_assert(false, "UNREACHABLE");
         }, target);
+}
+
+namespace
+{
+std::expected<Expression, std::string> reduce(Expression const& target, IdentifierMapWrapper& identifiers);
+
+std::expected<Expression, std::string> reduce_helper(Universe const& target, IdentifierMapWrapper& identifiers)
+{
+    return target;
+}
+
+std::expected<Expression, std::string> reduce_helper(Identifier const& target, IdentifierMapWrapper& identifiers)
+{
+    // Delta reduce
+    std::string identifier{ target.components | std::views::join_with('.') | std::ranges::to<std::string>() };
+    if (auto value = identifiers.scope_find(identifier); value)
+    {
+        return std::visit([&target](auto&& x) -> Expression
+            {
+                using T = std::remove_cvref_t<decltype(x)>;
+                if constexpr (std::is_same_v<T, Constant>)
+                    return reduce(x.value);
+                else
+                    return target;
+            }, *value);
+    }
+    return std::unexpected(std::format("Unknown identifier '{}'", identifier));
+}
+
+std::expected<Expression, std::string> reduce_helper(Function const& target, IdentifierMapWrapper& identifiers)
+{
+    auto reduced_param_type = reduce(*target.param_type, identifiers);
+    if (!reduced_param_type)
+        return std::unexpected(reduced_param_type.error());
+
+    auto guard = identifiers.emplace_bound_argument(target.param_name, clone(*reduced_param_type));
+    auto reduced_return_type = reduce(*target.return_type, identifiers);
+    if (!reduced_return_type)
+        return std::unexpected(reduced_return_type.error());
+
+    return Function{
+        .param_name = target.param_name,
+        .param_type = std::make_unique<Expression>(std::move(*reduced_param_type)),
+        .return_type = std::make_unique<Expression>(std::move(*reduced_return_type))
+    };
+}
+
+std::expected<Expression, std::string> reduce_helper(FunctionAbstraction const& target, IdentifierMapWrapper& identifiers)
+{
+    return clone(target);
+}
+
+std::expected<Expression, std::string> reduce_helper(FunctionApplication const& target, IdentifierMapWrapper& identifiers)
+{
+    auto abstraction_ptr = std::get_if<FunctionAbstraction>(target.function.get());
+    if (!abstraction_ptr)
+        return clone(target);
+
+    // Beta reduce
+    return reduce(*abstraction_ptr->return_value, identifiers);
+}
+
+std::expected<Expression, std::string> reduce(Expression const& target, IdentifierMapWrapper& identifiers)
+{
+    return std::visit([&identifiers](auto const& exp) { return reduce_helper(exp, identifiers); }, target);
+}
+}
+
+std::expected<Expression, std::string> reduce(Expression const& target, IdentifierMap const& identifiers)
+{
+    IdentifierMapWrapper wrapper{ identifiers };
+    return reduce(target, wrapper);
+}
+
+std::expected<ReducedResult, std::string> definitionally_equivalent(Expression const& lhs, Expression const& rhs, IdentifierMap const& identifiers)
+{
+    IdentifierMapWrapper wrapper{ identifiers };
+    return definitionally_equivalent(lhs, rhs, wrapper);
+}
+
+std::expected<ReducedResult, std::string> definitionally_equivalent(Expression const& lhs, Expression const& rhs, IdentifierMapWrapper& identifiers)
+{
+    auto lhs_reduced = reduce(lhs, identifiers);
+    if (!lhs_reduced)
+        return std::unexpected(lhs_reduced.error());
+
+    auto rhs_reduced = reduce(rhs, identifiers);
+    if (!rhs_reduced)
+        return std::unexpected(rhs_reduced.error());
+
+    return ReducedResult{
+        .result = *lhs_reduced == *rhs_reduced,
+        .lhs_reduced = std::move(*lhs_reduced),
+        .rhs_reduced = std::move(*rhs_reduced)
+    };
 }
