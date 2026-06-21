@@ -485,6 +485,12 @@ std::expected<ParsedKeywordCheck, ParseError> parse_keyword_check::operator()(st
 }
 
 
+std::expected<ParsedKeywordReduce, ParseError> parse_keyword_reduce::operator()(std::string_view input) const
+{
+    return parse_keyword_helper<ParsedKeywordReduce, "reduce">(input);
+}
+
+
 std::expected<ParsedKeywordDef, ParseError> parse_keyword_def::operator()(std::string_view input) const
 {
     return parse_keyword_helper<ParsedKeywordDef, "def">(input);
@@ -571,6 +577,16 @@ std::expected<ParsedCheckCommand, ParseError> parse_check_command::operator()(st
         .and_then(immediate<parse_keyword_check>)
         .and_then(next<parse_expression>)
         .transform([](ParsedExpression p) { return ParsedCheckCommand{ .expression = p, .remainder = p.remainder }; });
+}
+
+
+std::expected<ParsedReduceCommand, ParseError> parse_reduce_command::operator()(std::string_view input) const
+{
+    return begin_parse(input)
+        .and_then(immediate<parse_hash>)
+        .and_then(immediate<parse_keyword_reduce>)
+        .and_then(next<parse_expression>)
+        .transform([](ParsedExpression p) { return ParsedReduceCommand{ .expression = p, .remainder = p.remainder }; });
 }
 
 
@@ -681,7 +697,7 @@ std::expected<ParsedInductiveType, ParseError> parse_inductive_type::operator()(
 std::expected<ParsedProgram, ParseError> parse_program::operator()(std::string_view input) const
 {
     return begin_parse(input)
-        .and_then(next<zero_or_more<any<"unexpected identifier; expected statement", parse_inductive_type, parse_check_command, parse_constant>>>)
+        .and_then(next<zero_or_more<any<"unexpected identifier; expected statement", parse_inductive_type, parse_check_command, parse_reduce_command, parse_constant>>>)
         .and_then([](auto&& p) -> std::expected<ParsedProgram, ParseError>
             {
                 std::string_view remainder = consume_whitespace(p.remainder);

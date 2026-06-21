@@ -51,6 +51,13 @@ std::expected<std::string, Engine::ErrorType> Engine::process(ParsedCheckCommand
         });
 }
 
+std::expected<std::string, Engine::ErrorType> Engine::process(ParsedReduceCommand p)
+{
+    return create_expression(p.expression)
+        .and_then([this](Expression&& e) { return reduce(e, identifiers); })
+        .transform([this](Expression&& reduced) { return std::format("{}", to_pretty_string(reduced)); });
+}
+
 std::expected<void, Engine::ErrorType> Engine::process(ParsedConstant p)
 {
     std::string identifier{ p.identifier };

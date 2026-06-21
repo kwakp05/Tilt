@@ -118,6 +118,11 @@ struct parse_keyword_check
     std::expected<ParsedKeywordCheck, ParseError> operator()(std::string_view input) const;
 };
 
+struct parse_keyword_reduce
+{
+    std::expected<ParsedKeywordReduce, ParseError> operator()(std::string_view input) const;
+};
+
 struct parse_keyword_def
 {
     std::expected<ParsedKeywordDef, ParseError> operator()(std::string_view input) const;
@@ -196,6 +201,11 @@ struct parse_inductive_type
 struct parse_check_command
 {
     std::expected<ParsedCheckCommand, ParseError> operator()(std::string_view input) const;
+};
+
+struct parse_reduce_command
+{
+    std::expected<ParsedReduceCommand, ParseError> operator()(std::string_view input) const;
 };
 
 struct parse_program

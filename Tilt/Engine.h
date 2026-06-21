@@ -16,6 +16,7 @@ public:
 
     std::expected<void, ErrorType> process(ParsedInductiveType p);
     std::expected<std::string, ErrorType> process(ParsedCheckCommand p);
+    std::expected<std::string, ErrorType> process(ParsedReduceCommand p);
     std::expected<void, ErrorType> process(ParsedConstant p);
     std::optional<IdentifierReferenceType> scope_find(std::string const& s) const;
     std::expected<Expression, std::string> get_type(Expression const& p) const;

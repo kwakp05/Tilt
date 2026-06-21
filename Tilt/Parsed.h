@@ -153,6 +153,11 @@ struct ParsedKeywordCheck
     std::string_view remainder;
 };
 
+struct ParsedKeywordReduce
+{
+    std::string_view remainder;
+};
+
 struct ParsedKeywordDef
 {
     std::string_view remainder;
@@ -269,6 +274,12 @@ struct ParsedCheckCommand
     std::string_view remainder;
 };
 
+struct ParsedReduceCommand
+{
+    ParsedExpression expression;
+    std::string_view remainder;
+};
+
 struct ParsedEvalCommand
 {
     ParsedExpression expression;
@@ -277,6 +288,6 @@ struct ParsedEvalCommand
 
 struct ParsedProgram
 {
-    std::vector<std::variant<ParsedInductiveType, ParsedCheckCommand, ParsedConstant>> statements;
+    std::vector<std::variant<ParsedInductiveType, ParsedCheckCommand, ParsedReduceCommand, ParsedConstant>> statements;
     std::string_view remainder;
 };
