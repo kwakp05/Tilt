@@ -65,15 +65,17 @@ std::expected<Expression, std::string> reduce_helper(Universe const& target, Ide
 
 std::expected<Expression, std::string> reduce_helper(Identifier const& target, IdentifierMapWrapper& identifiers)
 {
-    // Delta reduce
     std::string identifier{ target.components | std::views::join_with('.') | std::ranges::to<std::string>() };
     if (auto value = identifiers.scope_find(identifier); value)
     {
-        return std::visit([&target](auto&& x) -> Expression
+        return std::visit([&target, &identifiers](auto&& ref_wrapped) -> std::expected<Expression, std::string>
             {
+                auto& x = ref_wrapped.get();
                 using T = std::remove_cvref_t<decltype(x)>;
-                if constexpr (std::is_same_v<T, Constant>)
-                    return reduce(x.value);
+                if constexpr (std::is_same_v<T, Constant>) // Delta reduce
+                    return reduce(x.value, identifiers);
+                else if constexpr (std::is_same_v<T, SubstitutedIdentifier>) // Beta reduce
+                    return reduce(x.value, identifiers);
                 else
                     return target;
             }, *value);
@@ -87,7 +89,7 @@ std::expected<Expression, std::string> reduce_helper(Function const& target, Ide
     if (!reduced_param_type)
         return std::unexpected(reduced_param_type.error());
 
-    auto guard = identifiers.emplace_bound_argument(target.param_name, clone(*reduced_param_type));
+    auto guard = identifiers.emplace_bound_identifier(target.param_name, clone(*reduced_param_type));
     auto reduced_return_type = reduce(*target.return_type, identifiers);
     if (!reduced_return_type)
         return std::unexpected(reduced_return_type.error());
@@ -111,6 +113,7 @@ std::expected<Expression, std::string> reduce_helper(FunctionApplication const& 
         return clone(target);
 
     // Beta reduce
+    auto guard = identifiers.emplace_substituted_identifier(abstraction_ptr->param_name, clone(*target.argument));
     return reduce(*abstraction_ptr->return_value, identifiers);
 }
 

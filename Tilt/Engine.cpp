@@ -54,7 +54,13 @@ std::expected<std::string, Engine::ErrorType> Engine::process(ParsedCheckCommand
 std::expected<std::string, Engine::ErrorType> Engine::process(ParsedReduceCommand p)
 {
     return create_expression(p.expression)
-        .and_then([this](Expression&& e) { return reduce(e, identifiers); })
+        .and_then([this](Expression&& e) -> std::expected<Expression, Engine::ErrorType>
+            {
+                // Type check
+                if (auto result = get_type(e); !result)
+                    return std::unexpected(result.error());
+                return reduce(e, identifiers);
+            })
         .transform([this](Expression&& reduced) { return std::format("{}", to_pretty_string(reduced)); });
 }
 
@@ -152,9 +158,14 @@ std::expected<Expression, std::string> get_type_helper(Constant const& value, Id
     return clone(value.type);
 }
 
-std::expected<Expression, std::string> get_type_helper(BoundArgument const& value, IdentifierMapWrapper& identifiers)
+std::expected<Expression, std::string> get_type_helper(BoundIdentifier const& value, IdentifierMapWrapper& identifiers)
 {
     return clone(value.type);
+}
+
+std::expected<Expression, std::string> get_type_helper(SubstitutedIdentifier const& value, IdentifierMapWrapper& identifiers)
+{
+    return std::unexpected(std::format("BUG: there should not be a susbstituted identifier in this context for '{}'", value.name));
 }
 
 std::expected<Expression, std::string> get_type_helper(IdentifierValueType const& value, IdentifierMapWrapper& identifiers)
@@ -218,7 +229,7 @@ std::expected<Expression, std::string> get_type_helper(FunctionApplication const
 
 std::expected<Expression, std::string> get_type_helper(FunctionAbstraction const& abstraction, IdentifierMapWrapper& identifiers)
 {
-    auto guard = identifiers.emplace_bound_argument(abstraction.param_name, clone(*abstraction.param_type));
+    auto guard = identifiers.emplace_bound_identifier(abstraction.param_name, clone(*abstraction.param_type));
     return get_type_helper(*abstraction.return_value, identifiers)
         .transform([&abstraction](Expression&& exp)
             {
@@ -248,7 +259,7 @@ std::expected<Expression, std::string> get_type_helper(Function const& function,
     return expect_type(*function.param_type)
         .transform([&param_type](Universe&& u) { param_type = u; })
         .and_then([&function, &expect_type, &identifiers]() {
-                auto guard = identifiers.emplace_bound_argument(function.param_name, clone(*function.param_type));
+                auto guard = identifiers.emplace_bound_identifier(function.param_name, clone(*function.param_type));
                 return expect_type(*function.return_type);
             })
         .transform([&param_type](Universe&& return_type)

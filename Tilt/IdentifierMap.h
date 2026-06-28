@@ -30,42 +30,69 @@ private:
     std::unordered_map<std::string, IdentifierValueType> identifiers;
 };
 
-struct BoundArgument
+struct BoundIdentifier
 {
     std::string name;
     Expression type;
 };
 
+struct SubstitutedIdentifier
+{
+    std::string name;
+    Expression value;
+};
+
 class IdentifierMapWrapper
 {
 public:
-    using ValueType = combine_variants_t<IdentifierReferenceType, std::variant<std::reference_wrapper<BoundArgument const>>>;
+    using ValueType = combine_variants_t<
+        IdentifierReferenceType,
+        std::variant<std::reference_wrapper<BoundIdentifier const>, std::reference_wrapper<SubstitutedIdentifier const>>
+    >;
 
     explicit IdentifierMapWrapper(IdentifierMap const& wrapped);
 
     std::optional<ValueType> scope_find(std::string const& identifier) const;
 
-    class BoundArgumentGuard
+    class BoundIdentifierGuard
     {
     public:
-        BoundArgumentGuard(IdentifierMapWrapper& identifiers, std::string_view name, Expression&& exp);
+        BoundIdentifierGuard(IdentifierMapWrapper& identifiers, std::string_view name, Expression&& exp);
 
-        ~BoundArgumentGuard();
+        ~BoundIdentifierGuard();
 
-        BoundArgumentGuard(BoundArgumentGuard const& other) = delete;
-        BoundArgumentGuard(BoundArgumentGuard&& other) = delete;
-        BoundArgumentGuard& operator=(BoundArgumentGuard const& other) = delete;
-        BoundArgumentGuard& operator=(BoundArgumentGuard&& other) = delete;
+        BoundIdentifierGuard(BoundIdentifierGuard const& other) = delete;
+        BoundIdentifierGuard(BoundIdentifierGuard&& other) = delete;
+        BoundIdentifierGuard& operator=(BoundIdentifierGuard const& other) = delete;
+        BoundIdentifierGuard& operator=(BoundIdentifierGuard&& other) = delete;
 
     private:
         IdentifierMapWrapper& identifiers;
     };
 
-    [[nodiscard]] BoundArgumentGuard emplace_bound_argument(std::string_view name, Expression&& exp);
+    class SubstitutedIdentifierGuard
+    {
+    public:
+        SubstitutedIdentifierGuard(IdentifierMapWrapper& identifiers, std::string_view name, Expression&& exp);
+
+        ~SubstitutedIdentifierGuard();
+
+        SubstitutedIdentifierGuard(SubstitutedIdentifierGuard const& other) = delete;
+        SubstitutedIdentifierGuard(SubstitutedIdentifierGuard&& other) = delete;
+        SubstitutedIdentifierGuard& operator=(SubstitutedIdentifierGuard const& other) = delete;
+        SubstitutedIdentifierGuard& operator=(SubstitutedIdentifierGuard&& other) = delete;
+
+    private:
+        IdentifierMapWrapper& identifiers;
+    };
+
+    [[nodiscard]] BoundIdentifierGuard emplace_bound_identifier(std::string_view name, Expression&& exp);
+    [[nodiscard]] SubstitutedIdentifierGuard emplace_substituted_identifier(std::string_view name, Expression&& exp);
 
 private:
     IdentifierMap const& wrapped;
-    std::vector<BoundArgument> bound_arguments;
+    std::vector<std::variant<BoundIdentifier, SubstitutedIdentifier>> extra_identifiers;
 
-    friend class BoundArgumentGuard;
+    friend class BoundIdentifierGuard;
+    friend class SubstitutedIdentifierGuard;
 };
