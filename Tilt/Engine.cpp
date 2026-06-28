@@ -60,7 +60,7 @@ std::expected<std::string, Engine::ErrorType> Engine::process(ParsedReduceComman
 
 std::expected<void, Engine::ErrorType> Engine::process(ParsedConstant p)
 {
-    std::string identifier{ p.identifier };
+    std::string identifier{ p.identifier.identifier };
     if (identifiers.contains(identifier))
         return std::unexpected("'" + identifier + "' has already been declared");
     return create_constant(p)

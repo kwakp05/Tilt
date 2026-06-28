@@ -62,7 +62,7 @@ std::expected<ParsedDigits, ParseError> parse_digits::operator()(std::string_vie
             });
 }
 
-std::expected<ParsedHierarchicalIdentifier, ParseError> parse_hierarchical_identifier::operator()(std::string_view input) const
+std::expected<ParsedHierarchicalIdentifier, ParseError> parse_hierarchical_identifier::operator()(std::string_view const input) const
 {
     std::optional<ParsedIdentifier> first_identifier;
     return begin_parse(input)
@@ -76,7 +76,7 @@ std::expected<ParsedHierarchicalIdentifier, ParseError> parse_hierarchical_ident
                     return std::unexpected("Invalid field notation : Identifier or numeral expected after '.'");
                 return parsed;
         })
-        .transform([first_identifier](Parsed auto&& parsed)
+        .transform([first_identifier, input](Parsed auto&& parsed)
         {
                 std::vector<ParsedIdentifier> components;
                 components.reserve(parsed.value.size() + 1);
@@ -85,7 +85,11 @@ std::expected<ParsedHierarchicalIdentifier, ParseError> parse_hierarchical_ident
                 {
                     components.push_back(std::get<ParsedIdentifier>(parsed_compose.value));
                 }
-                return ParsedHierarchicalIdentifier{.components=std::move(components), .remainder = parsed.remainder};
+                return ParsedHierarchicalIdentifier{
+                    .components = std::move(components),
+                    .identifier = std::string_view{input.data(), parsed.remainder.data()},
+                    .remainder = parsed.remainder
+                };
         });
 }
 
@@ -547,21 +551,27 @@ std::expected<ParsedKeywordFun, ParseError> parse_keyword_fun::operator()(std::s
 
 std::expected<ParsedConstant, ParseError> parse_constant::operator()(std::string_view input) const
 {
-    std::string_view identifier;
-    std::optional<ParsedExpression> type;
-    return begin_parse(input)
+    std::expected<ParsedHierarchicalIdentifier, ParseError> identifier = begin_parse(input)
         .and_then(immediate<parse_keyword_def>)
-        .and_then(next<parse_identifier>)
-        .and_then(effect([&identifier](ParsedIdentifier x) { identifier = x.identifier; }))
+        .and_then(next<parse_hierarchical_identifier>);
+
+    if (!identifier)
+        return std::unexpected(identifier.error());
+
+    std::expected<ParsedExpression, ParseError> type = begin_parse(identifier->remainder)
         .and_then(next<parse_colon>)
-        .and_then(next<parse_expression>)
-        .and_then(effect([&type](ParsedExpression x) { type = std::move(x); }))
+        .and_then(next<parse_expression>);
+
+    if (!type)
+        return std::unexpected(type.error());
+
+    return begin_parse(type->remainder)
         .and_then(next<parse_assignment>)
         .and_then(next<parse_expression>)
         .transform([&identifier, &type](ParsedExpression&& parsed_value)
             {
                 return ParsedConstant{
-                    .identifier = identifier,
+                    .identifier = std::move(*identifier),
                     .type = std::move(*type),
                     .value = std::move(parsed_value),
                     .remainder = parsed_value.remainder

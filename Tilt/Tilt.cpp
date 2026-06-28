@@ -106,7 +106,7 @@ void print_parsed(Parsed auto&& parsed)
     else if constexpr (std::is_same_v<T, ParsedConstant>)
     {
         std::cout << "ParsedConstant\n";
-        std::println("{}", parsed.identifier);
+        std::println("{}", parsed.identifier.identifier);
         std::println("TYPE:");
         print_parsed(parsed.type);
         std::println("VALUE:");

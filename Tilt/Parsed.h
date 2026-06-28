@@ -94,6 +94,7 @@ struct ParsedDigits
 struct ParsedHierarchicalIdentifier
 {
     std::vector<ParsedIdentifier> components;
+    std::string_view identifier;
     std::string_view remainder;
 };
 
@@ -224,7 +225,7 @@ struct ParsedExpression
 
 struct ParsedConstant
 {
-    std::string_view identifier;
+    ParsedHierarchicalIdentifier identifier;
     ParsedExpression type;
     ParsedExpression value;
     std::string_view remainder;

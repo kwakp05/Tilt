@@ -16,7 +16,11 @@ std::expected<Constant, std::string> create_constant(ParsedConstant p)
     if (!value)
         return std::unexpected(value.error());
 
-    return Constant{ .name = std::string{p.identifier}, .type = std::move(*type), .value = std::move(*value) };
+    return Constant{
+        .name = std::string{ p.identifier.identifier },
+        .type = std::move(*type),
+        .value = std::move(*value)
+    };
 }
 
 std::string to_pretty_string(Constant const& c)

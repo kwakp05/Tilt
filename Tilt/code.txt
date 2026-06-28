@@ -6,6 +6,16 @@ inductive Or (a : Prop) (b : Prop) : Prop where
 #check Or.inl
 #check Or.inr
 #check Or.rec
+def Or.elim : (a : Prop) -> (b : Prop) -> (c : Prop) -> (h : Or a b) -> (left : (_ : a) -> c) -> (right : (_ : b) -> c) -> c :=
+  fun (a : Prop) =>
+  fun (b : Prop) =>
+  fun (c : Prop) =>
+  fun (h : Or a b) =>
+  fun (left : (_ : a) -> c) =>
+  fun (right : (_ : b) -> c) =>
+  Or.rec a b (fun (_ : Or a b) => c) left right h
+#check Or.elim
+#reduce Or.elim
 
 
 inductive False : Prop where
