@@ -58,10 +58,15 @@ inductive Int : Type where
   | ofNat : (n : Nat) -> Int
   | negSucc : (n : Nat) -> Int
 
+def Int.natAbs : (m : Int) -> Nat := fun (m : Int) => Int.rec1 (fun (_ : Int) => Nat) (fun (x : Nat) => x) (fun (x : Nat) => Nat.succ x) m
+
 #check Int
 #check Int.ofNat
 #check Int.negSucc
 #check Int.negSucc (Nat.succ Nat.zero)
+#check Int.natAbs
+#reduce Int.natAbs (Int.ofNat (Nat.succ Nat.zero))
+#reduce Int.natAbs (Int.negSucc (Nat.succ Nat.zero))
 
 
 inductive Rat : Type where

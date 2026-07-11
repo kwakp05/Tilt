@@ -54,6 +54,19 @@ public:
 
     std::optional<ValueType> scope_find(std::string const& identifier) const;
 
+    template <class T>
+    std::add_pointer_t<T const> get_if(std::string const& identifier) const
+    {
+        return scope_find(identifier)
+            .transform([](auto&& x) -> std::add_pointer_t<T const>
+                {
+                    if (auto ptr = std::get_if<std::reference_wrapper<T const>>(&x))
+                        return &ptr->get();
+                    return nullptr;
+                })
+            .value_or(nullptr);
+    }
+
     class BoundIdentifierGuard
     {
     public:
