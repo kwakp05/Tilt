@@ -381,6 +381,19 @@ std::generator<NamedExpressionView> get_function_args(Expression const& function
     }
 }
 
+std::generator<Expression const&> get_application_terms(Expression const& application)
+{
+    if (FunctionApplication const* ptr = std::get_if<FunctionApplication>(&application))
+    {
+        co_yield std::ranges::elements_of(get_application_terms(*ptr->function));
+        co_yield *ptr->argument;
+    }
+    else
+    {
+        co_yield application;
+    }
+}
+
 bool operator==(Function const& lhs, Function const& rhs)
 {
     return *lhs.param_type == *rhs.param_type && *lhs.return_type == *rhs.return_type;

@@ -95,6 +95,7 @@ Function clone(Function const& function);
 FunctionAbstraction clone(FunctionAbstraction const& abstraction);
 FunctionApplication clone(FunctionApplication const& application);
 std::generator<NamedExpressionView> get_function_args(Expression const& function);
+std::generator<Expression const&> get_application_terms(Expression const& application);
 
 Expression create_function_from_terms(NamedExpressionInputRange auto&& terms)
 {
