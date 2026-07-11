@@ -29,6 +29,7 @@ struct InductiveType
     std::vector<Constructor> constructors;
     std::vector<NamedExpression> parameters;
     Recursor rec;
+    Recursor rec1;
 };
 
 std::expected<InductiveType, std::string> create_inductive_type(ParsedInductiveType p);

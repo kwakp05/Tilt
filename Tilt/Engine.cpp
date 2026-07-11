@@ -31,6 +31,7 @@ std::expected<void, Engine::ErrorType> Engine::process(ParsedInductiveType p)
                     identifiers.insert(std::format("{}.{}", identifier, c.name), clone(c));
                 }
                 identifiers.insert(std::format("{}.rec", identifier), clone(type.rec));
+                identifiers.insert(std::format("{}.rec1", identifier), clone(type.rec1));
                 identifiers.insert(identifier, std::move(type));
 
         });

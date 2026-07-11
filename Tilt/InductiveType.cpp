@@ -36,7 +36,8 @@ std::expected<InductiveType, std::string> create_inductive_type(ParsedInductiveT
         parameters.push_back(NamedExpression{ std::string{param.identifier.identifier}, std::move(*res) });
     }
 
-    Recursor recursor = create_recursor(std::string{ p.identifier.identifier }, parameters, constructors, 0);
+    Recursor recursor0 = create_recursor(std::string{ p.identifier.identifier }, parameters, constructors, 0);
+    Recursor recursor1 = create_recursor(std::string{ p.identifier.identifier }, parameters, constructors, 1);
 
     return InductiveType
     {
@@ -44,7 +45,8 @@ std::expected<InductiveType, std::string> create_inductive_type(ParsedInductiveT
         .type = std::move(*type),
         .constructors = std::move(constructors),
         .parameters = std::move(parameters),
-        .rec = std::move(recursor)
+        .rec = std::move(recursor0),
+        .rec1 = std::move(recursor1)
     };
 }
 
