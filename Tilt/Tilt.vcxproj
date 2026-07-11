@@ -133,6 +133,7 @@
     <ClCompile Include="Expression.cpp" />
     <ClCompile Include="IdentifierMap.cpp" />
     <ClCompile Include="InductiveType.cpp" />
+    <ClCompile Include="Logger.cpp" />
     <ClCompile Include="Parser.cpp" />
     <ClCompile Include="Reducer.cpp" />
     <ClCompile Include="Tilt.cpp" />
@@ -144,6 +145,7 @@
     <ClInclude Include="Expression.h" />
     <ClInclude Include="IdentifierMap.h" />
     <ClInclude Include="InductiveType.h" />
+    <ClInclude Include="Logger.h" />
     <ClInclude Include="Parsed.h" />
     <ClInclude Include="Parser.h" />
     <ClInclude Include="ParserUtils.h" />
