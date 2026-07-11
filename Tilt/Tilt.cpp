@@ -14,8 +14,6 @@
 #include <utility>
 #include <variant>
 
-#include "utf8.h"
-
 #include "EngineRunner.h"
 #include "Parsed.h"
 #include "Parser.h"
