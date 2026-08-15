@@ -5,6 +5,7 @@
 #include <functional>
 #include <iostream>
 #include <iterator>
+#include <print>
 #include <ranges>
 #include <sstream>
 #include <string>
@@ -188,171 +189,15 @@ constexpr std::string parsed_to_name()
         static_assert(false, "UNREACHABLE");
 }
 
-int main()
+int main(int argc, char* argv[])
 {
-    std::string input = "def hello : Nat := 12938\n";
-    std::string input2 = "#check hello";
-    std::string input3 = "identifier check";
-    auto x = begin_parse(input).and_then(immediate<parse_constant>);
-
-    if (x.has_value())
+    if (argc != 2)
     {
-        print_parsed(*x);
-    }
-    else
-        std::cout << "FAIL " << x.error() << "\n";
-
-    std::string input4 = "Nat -> List Nat -> Nat";
-    std::cout << "\nPARSING EXPRESSION " << input4 << "\n";
-    auto z2 = begin_parse(input4).and_then(next<parse_expression>);
-    if (z2)
-    {
-
-        print_parsed(z2.value());
-    }
-    else
-    {
-        std::cout << "failed expression: " << z2.error() << "\n";
+        std::println("Usage: {} <input-file>", argv[0]);
+        return 1;
     }
 
-    {
-        std::string input = "axiom mynum : Nat -> Nat -> False";
-        std::cout << "\nPARSING AXIOM " << input << "\n";
-        auto res = begin_parse(input)
-            .and_then(immediate<parse_axiom>);
-        if (res)
-            print_parsed(res.value());
-        else
-            std::cout << "FAIL " << res.error() << "\n";
-    }
-
-    {
-        std::string input = "theorem myt : (p : Prop) -> p -> p := fun x : Prop => fun y : x => (y : x)";
-        std::cout << "\nPARSING THEOREM " << input << "\n";
-        auto res = begin_parse(input)
-            .and_then(immediate<parse_theorem>);
-        if (res)
-            print_parsed(res.value());
-        else
-            std::cout << "FAIL " << res.error() << "\n";
-    }
-
-    {
-        std::string input = "def Hello : Nat := 3\ndef World : Bool := false";
-        std::cout << "\nPARSING MULTIPLE CONSTANT " << input << "\n";
-        auto res = begin_parse(input)
-            .and_then(immediate<zero_or_more<parse_constant>>);
-        if (res)
-            print_parsed(res.value());
-        else
-            std::cout << "FAIL " << res.error() << "\n";
-    }
-
-    {
-        std::string input = "inductive Weekday : Type 0 where\n"
-            "| sunday : Weekday\n"
-            "| monday : Weekday\n"
-            "| tuesday : Weekday\n"
-            "| wednesday : Weekday\n"
-            "| thursday : Weekday\n"
-            "| friday : Weekday\n"
-            "| saturday : Weekday\n";
-        std::cout << "\nPARSING INDUCTIVE TYPE " << input << "\n";
-        auto parsed_inductive_type = begin_parse(input).and_then(immediate<parse_inductive_type>);
-        if (parsed_inductive_type)
-        {
-            print_parsed(parsed_inductive_type.value());
-            Engine engine;
-            engine.process(parsed_inductive_type.value());
-        }
-        else
-            std::cout << "FAIL " << parsed_inductive_type.error() << "\n";
-    }
-
-    {
-        std::string input = "Weekday.sunday.monday";
-        std::cout << "\nPARSING HIERARCHICAL IDENTIFIER " << input << "\n";
-        auto parsed = begin_parse(input).and_then(immediate<parse_hierarchical_identifier>);
-        if (parsed)
-            print_parsed(parsed.value());
-        else
-            std::cout << "FAIL " << parsed.error() << "\n";
-    }
-
-    {
-        std::string input = "#check";
-        std::cout << "\nPARSING #check to test compose " << input << "\n";
-        auto parsed = begin_parse(input).and_then(immediate<compose<parse_hash, parse_identifier>>);
-        if (parsed)
-            print_parsed(parsed.value());
-        else
-            std::cout << "FAIL " << parsed.error() << "\n";
-    }
-
-    {
-        SimpleEngineRunner engine;
-        std::string input = "inductive Nat : Type 0 where\n"
-            "| zero : Nat\n"
-            "| succ : (n : Nat) -> Nat\n";
-        std::cout << "\nPARSING INDUCTIVE TYPE " << input << "\n";
-        auto parsed_inductive_type = begin_parse(input).and_then(immediate<parse_inductive_type>);
-        if (parsed_inductive_type)
-        {
-            print_parsed(parsed_inductive_type.value());
-            engine.process(parsed_inductive_type.value());
-            engine.print_identifier("Nat");
-        }
-        else
-            std::cout << "FAIL " << parsed_inductive_type.error() << "\n";
-
-        input = "#check Nat.succ";
-        std::cout << "\nPARSING " << input << "\n";
-        auto parsed_check_command = begin_parse(input).and_then(immediate<parse_check_command>);
-        if (parsed_check_command)
-        {
-            print_parsed(parsed_check_command.value());
-            engine.process(parsed_check_command.value());
-        }
-        else
-            std::cout << "FAIL " << parsed_inductive_type.error() << "\n";
-
-        input = "#check Nat.zero";
-        std::cout << "\nPARSING " << input << "\n";
-        parsed_check_command = begin_parse(input).and_then(immediate<parse_check_command>);
-        if (parsed_check_command)
-        {
-            print_parsed(parsed_check_command.value());
-            engine.process(parsed_check_command.value());
-            std::println("{}", to_pretty_string(create_expression(parsed_check_command.value().expression).value()));
-        }
-        else
-            std::cout << "FAIL " << parsed_inductive_type.error() << "\n";
-
-        input = "#check Nat.succ Nat.zero";
-        std::cout << "\nPARSING " << input << "\n";
-        parsed_check_command = begin_parse(input).and_then(immediate<parse_check_command>);
-        if (parsed_check_command)
-        {
-            print_parsed(parsed_check_command.value());
-            engine.process(parsed_check_command.value());
-            std::println("{}", to_pretty_string(create_expression(parsed_check_command.value().expression).value()));
-        }
-        else
-            std::cout << "FAIL " << parsed_inductive_type.error() << "\n";
-
-        input = "#check Nat.succ (Nat.succ Nat.zero)";
-        std::cout << "\nPARSING " << input << "\n";
-        parsed_check_command = begin_parse(input).and_then(immediate<parse_check_command>);
-        if (parsed_check_command)
-        {
-            print_parsed(parsed_check_command.value());
-            engine.process(parsed_check_command.value());
-            std::println("{}", to_pretty_string(create_expression(parsed_check_command.value().expression).value()));
-        }
-        else
-            std::cout << "FAIL " << parsed_inductive_type.error() << "\n";
-    }
-
-    run_file("code.txt");
+    run_file(argv[1]);
+    return 0;
 }
 
